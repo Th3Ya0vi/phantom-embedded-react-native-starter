@@ -55,7 +55,7 @@
   "dependencies": {
     "@babel/runtime": "^7.28.4",
     "@expo/vector-icons": "^15.0.3",
-    "@phantom/react-native-sdk": "1.0.0-beta.26",
+    "@phantom/react-native-sdk": "1.0.0",
     "@solana/web3.js": "^1.95.0",
     "expo": "~54.0.0",
     "expo-auth-session": "~7.0.9",
@@ -63,7 +63,7 @@
     "expo-router": "~6.0.15",
     "expo-secure-store": "~15.0.7",
     "expo-web-browser": "~15.0.9",
-    "react": "19.2.1",
+    "react": "19.1.0",
     "react-native": "0.81.5",
     "react-native-get-random-values": "~1.11.0",
     "react-native-safe-area-context": "~5.6.0",
