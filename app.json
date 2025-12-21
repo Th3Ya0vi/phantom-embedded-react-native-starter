@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "Phantom Embedded Wallet",
-    "slug": "phantom-embedded-wallet",
+    "name": "GeSIM",
+    "slug": "gesim",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/default.png",
@@ -10,7 +10,7 @@
     "splash": {
       "image": "./assets/splash.png",
       "resizeMode": "cover",
-      "backgroundColor": "#AB9FF2"
+      "backgroundColor": "#2F66F6"
     },
     "ios": {
       "supportsTablet": true,
@@ -22,7 +22,7 @@
       "adaptiveIcon": {
         "foregroundImage": "./assets/default.png",
         "monochromeImage": "./assets/android-notification-icon.png",
-        "backgroundColor": "#AB9FF2"
+        "backgroundColor": "#2F66F6"
       },
       "package": "com.yawei.phantomwallet",
       "icon": "./assets/default.png"

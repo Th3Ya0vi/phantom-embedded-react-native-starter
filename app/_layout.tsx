@@ -31,7 +31,8 @@ export default function RootLayout() {
     // Multi-chain support: Solana and Ethereum
     addressTypes: [AddressType.solana, AddressType.ethereum],
     authOptions: {
-      redirectUrl: `${scheme}://phantom-auth-callback`,
+    // redirectUrl: `${scheme}://phantom-auth-callback`,
+      redirectUrl: `${scheme}://invite`,
     },
   };
 
@@ -82,6 +83,8 @@ export default function RootLayout() {
             gestureEnabled: false,
           }}
         />
+              <Stack.Screen name="(tabs)"
+              options={{ headerShown: false }} />
       </Stack>
     </PhantomProvider>
   );

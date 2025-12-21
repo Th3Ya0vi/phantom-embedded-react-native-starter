@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { View, Text, StyleSheet, Image, TouchableOpacity, Linking } from 'react-native';
 import { useAccounts } from '@phantom/react-native-sdk';
-import { useRouter,Redirect } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { ConnectButton } from '@/components/ConnectButton';
 import { colors } from '@/lib/theme';
 
@@ -85,4 +85,3 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 });
-

@@ -18,7 +18,7 @@ import {
   useModal,
   AddressType,
 } from '@phantom/react-native-sdk';
-import { useRouter } from 'expo-router';
+import { useRouter,useRootNavigationState } from 'expo-router';
 import { getBalance } from '@/lib/solana';
 import { truncateAddress, copyToClipboard } from '@/lib/utils';
 import { colors } from '@/lib/theme';
@@ -38,6 +38,7 @@ export function WalletInfo() {
   const { ethereum, isAvailable: isEthereumAvailable } = useEthereum();
   const modal = useModal();
   const router = useRouter();
+    const rootNavigationState = useRootNavigationState();
   
   const [solBalance, setSolBalance] = useState<number | null>(null);
   const [isLoadingBalance, setIsLoadingBalance] = useState(false);
@@ -48,10 +49,20 @@ export function WalletInfo() {
 
   // Redirect to home if disconnected
   useEffect(() => {
-    if (!isConnected) {
+
+  const navigationReady = rootNavigationState?.key;
+
+  if (navigationReady && !isConnected) {
+    // FIX: Wrap the navigation in setTimeout
+    // This pushes the action to the end of the event loop,
+    // ensuring the Root Layout is fully mounted before we try to move.
+    const timer = setTimeout(() => {
       router.replace('/');
-    }
-  }, [isConnected]);
+    }, 0);
+
+    return () => clearTimeout(timer); // Cleanup
+  }
+}, [isConnected, rootNavigationState?.key]);
 
   // Fetch Solana balance when account is available
   useEffect(() => {
