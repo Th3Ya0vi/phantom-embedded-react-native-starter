@@ -14,7 +14,7 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.yawei.phantomwallet",
+      "bundleIdentifier": "com.gesim.phantomwallet",
       "appleTeamId": "837KBXFC63",
       "icon": "./assets/default.png"
     },
@@ -24,7 +24,7 @@
         "monochromeImage": "./assets/android-notification-icon.png",
         "backgroundColor": "#2F66F6"
       },
-      "package": "com.yawei.phantomwallet",
+      "package": "com.gesim.phantomwallet",
       "icon": "./assets/default.png"
     },
     "web": {

@@ -52,6 +52,11 @@ export function WalletInfo() {
 
   const navigationReady = rootNavigationState?.key;
 
+
+if (isConnected) {
+      return <Redirect href="/invite" />
+    }
+
   if (navigationReady && !isConnected) {
     // FIX: Wrap the navigation in setTimeout
     // This pushes the action to the end of the event loop,

@@ -1,91 +1,94 @@
-// THIS MUST BE THE FIRST IMPORT!
-// Required for cryptographic operations in React Native
-import 'react-native-get-random-values';
+// MUST be first
+import 'react-native-get-random-values'
 
-import { Stack } from 'expo-router';
-import { 
-  PhantomProvider, 
+import { Stack } from 'expo-router'
+import { ToastProvider } from '@/lib/ui/ToastContext';
+import { SessionProvider } from '@/lib/session/SessionContext'
+import {
+  PhantomProvider,
   AddressType,
   darkTheme,
   type PhantomSDKConfig,
-  type PhantomDebugConfig 
-} from '@phantom/react-native-sdk';
-import { colors } from '@/lib/theme';
+  type PhantomDebugConfig,
+} from '@phantom/react-native-sdk'
+import { colors } from '@/lib/theme'
 
-/**
- * Root layout component that wraps the entire app
- * Configures PhantomProvider for embedded user wallets
- * Supports both Solana and Ethereum chains (multi-chain)
- * Updated for SDK v1.0.0-beta.26 with modal support
- */
 export default function RootLayout() {
-  const appId = process.env.EXPO_PUBLIC_PHANTOM_APP_ID || '';
-  const scheme = process.env.EXPO_PUBLIC_APP_SCHEME || 'phantomwallet';
-  
-  // SDK configuration - static, won't change when debug settings change
+  const appId = process.env.EXPO_PUBLIC_PHANTOM_APP_ID || ''
+  const scheme = process.env.EXPO_PUBLIC_APP_SCHEME || 'phantomwallet'
+
   const config: PhantomSDKConfig = {
     appId,
     scheme,
-    // Supported authentication providers
     providers: ['google', 'apple'],
-    // Multi-chain support: Solana and Ethereum
     addressTypes: [AddressType.solana, AddressType.ethereum],
     authOptions: {
-    // redirectUrl: `${scheme}://phantom-auth-callback`,
       redirectUrl: `${scheme}://invite`,
     },
-  };
+  }
 
-  // Debug configuration - separate to avoid SDK reinstantiation
   const debugConfig: PhantomDebugConfig = {
-    enabled: __DEV__, // Enable debug logging in development mode
-  };
+    enabled: __DEV__,
+  }
 
-  // Custom theme matching brand colors while extending dark theme
   const customTheme = {
     ...darkTheme,
-    brand: colors.brand, // Use brand indigo color
+    brand: colors.brand,
     borderRadius: 12,
-  };
-  
+  }
+
   return (
-    <PhantomProvider 
-      config={config} 
+    <PhantomProvider
+      config={config}
       debugConfig={debugConfig}
       theme={customTheme}
       appName="Phantom Wallet"
     >
-      <Stack
-        screenOptions={{
-          headerStyle: {
-            backgroundColor: colors.paper,
-          },
-          headerTintColor: colors.ink,
-          headerTitleStyle: {
-            fontWeight: 'bold',
-          },
-          headerShadowVisible: false,
-        }}
-      >
-        <Stack.Screen
-          name="index"
-          options={{
-            title: 'Phantom Wallet',
-            headerBackVisible: false,
-            gestureEnabled: false,
+    <ToastProvider>
+      <SessionProvider>
+        <Stack
+          screenOptions={{
+            headerStyle: { backgroundColor: colors.paper },
+            headerTintColor: colors.ink,
+            headerTitleStyle: { fontWeight: 'bold' },
+            headerShadowVisible: false,
           }}
-        />
-        <Stack.Screen
-          name="wallet"
-          options={{
-            title: 'Dashboard',
-            headerBackVisible: false,
-            gestureEnabled: false,
-          }}
-        />
-              <Stack.Screen name="(tabs)"
-              options={{ headerShown: false }} />
-      </Stack>
+        >
+          {/* GATE SCREEN – NO HEADER */}
+          <Stack.Screen
+            name="index"
+            options={{
+              headerShown: false,
+              gestureEnabled: false,
+            }}
+          />
+
+          {/* PHANTOM CONNECT */}
+          <Stack.Screen
+            name="home"
+            options={{
+              title: 'Phantom Wallet',
+              headerBackVisible: false,
+            }}
+          />
+
+          {/* MAIN APP */}
+          <Stack.Screen
+            name="wallet"
+            options={{
+              title: 'Dashboard',
+              headerBackVisible: false,
+              gestureEnabled: false,
+            }}
+          />
+
+          <Stack.Screen
+            name="(tabs)"
+            options={{ headerShown: false }}
+          />
+        </Stack>
+      </SessionProvider>
+      </ToastProvider>
     </PhantomProvider>
-  );
+  )
 }

@@ -20,9 +20,8 @@ export default function WalletScreen() {
 
   return (
     <View style={[
-                  styles.container,
-                  // 3. APPLY TOP PADDING HERE
-                  { paddingTop: insets.top }
+       styles.container,
+        { paddingTop: insets.top }
                 ]}>
       <ScrollView
         contentContainerStyle={styles.content}

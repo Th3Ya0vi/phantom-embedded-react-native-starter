@@ -23,11 +23,12 @@ export default function PlansScreen() {
     const insets = useSafeAreaInsets();
 
   return (
-    <LinearGradient colors={Gradients.background} style={[
-                                                          styles.container,
-                                                          // 3. APPLY TOP PADDING HERE
-                                                          { paddingTop: insets.top }
-                                                        ]}>
+    <LinearGradient colors={Gradients.background}
+    style={[
+      styles.container,
+      { paddingTop: insets.top }
+      ]}>
+
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.title}>Data Plans</Text>
@@ -100,12 +101,10 @@ export default function PlansScreen() {
                 Best for multi-country trips
               </Text>
 
-              <LinearGradient
-                colors={Gradients.progress}
-                style={styles.buyButton}
-              >
-                <Text style={styles.buyText}>Buy Plan</Text>
-              </LinearGradient>
+              <Pressable style={styles.buyButton}>
+                            <Text style={styles.buyText}>Buy Plan</Text>
+                          </Pressable>
+
             </BlurView>
           </LinearGradient>
         ))}
@@ -210,6 +209,7 @@ const styles = StyleSheet.create({
   },
 
   buyButton: {
+      backgroundColor: '#2F66F6',
     marginTop: Spacing.md,
     borderRadius: 14,
     paddingVertical: Spacing.sm,
