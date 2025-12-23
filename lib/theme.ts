@@ -1,68 +1,89 @@
 /**
  * Brand Theme Colors
  * Single source of truth for all color tokens
- * Updated for Phantom SDK v1.0.0-beta.26 with modal support
  */
-export const colors = {
-  // Primary brand colors
+
+// 1. Define Base Colors
+const baseColors = {
   ink: '#0f172a',
-  brand: '#6366f1',  // Indigo - matches brand guidelines
+  brand: '#6366f1',
   paper: '#ffffff',
-  
-  // Secondary colors for multi-chain UI
-  yellow: '#eab308',
-  blue: '#3b82f6',      // Ethereum chain color
-  coral: '#f87171',
+  blue: '#2F66F6', // Your new Buy Button Blue
   green: '#22c55e',
-  slate: '#64748b',
-  orange: '#f97316',
-  vanilla: '#fef3c7',
-  navy: '#1e293b',
-  lavender: '#a78bfa',  // Solana/Phantom chain color
-  pink: '#ec4899',
-  plum: '#7c3aed',
-  
-  // Grays
+  coral: '#f87171',
   gray100: '#f3f4f6',
   gray200: '#e5e7eb',
-  gray300: '#d1d5db',
   gray400: '#9ca3af',
-  gray500: '#6b7280',
+
+  // Dark Mode Bases
+  darkBg: '#000000',
+  darkSurface: '#121212',
+  darkText: '#FFFFFF',
+  darkTextSec: '#A0A0A0',
 };
 
-/**
- * Semantic color tokens
- */
+// 2. Export 'Colors' (Capitalized) to match your app components
+export const colors = {
+  // Brand
+  primary: baseColors.blue,
+  brand: baseColors.brand,
+
+  // Backgrounds
+  background: baseColors.darkBg,
+  surface: baseColors.darkSurface,
+  paper: '#1A1A1A',
+
+  // Text
+  textPrimary: baseColors.darkText,
+  textSecondary: baseColors.darkTextSec,
+  textMuted: '#666666',
+
+  // UI
+  border: '#2A2A2A',
+  error: baseColors.coral,
+  success: baseColors.green,
+
+  // Keep lowercase aliases for backward compatibility if needed
+  ...baseColors
+};
+
+// 3. Export Spacing
+export const Spacing = {
+  xs: 4,
+  sm: 8,
+  md: 16,
+  lg: 24,
+  xl: 32,
+  xxl: 48,
+};
+
+// 4. Export Typography (This was missing!)
+export const Typography = {
+  h1: {
+    fontSize: 32,
+    fontWeight: '700' as const,
+    color: colors.textPrimary,
+  },
+  h2: {
+    fontSize: 24,
+    fontWeight: '600' as const,
+    color: colors.textPrimary,
+  },
+  body: {
+    fontSize: 16,
+    fontWeight: '400' as const,
+    color: colors.textSecondary,
+  },
+  caption: {
+    fontSize: 12,
+    fontWeight: '400' as const,
+    color: colors.textMuted,
+  },
+};
+
+// 5. Semantic Exports (Optional, keeps existing code working)
 export const semantic = {
-  textDefault: colors.ink,
-  textMuted: colors.gray400,
-  bgPage: colors.paper,
-  bgSurface: '#ffffff',
-  borderSubtle: colors.gray100,
-  focusRing: colors.brand,
-  link: colors.brand,
-  success: colors.green,
-  warning: colors.orange,
-  info: colors.blue,
-  error: colors.coral,
+  textDefault: baseColors.ink,
+  bgPage: baseColors.paper,
+  link: baseColors.brand,
 };
-
-/**
- * Dark mode colors (for mobile app)
- */
-export const darkColors = {
-  bgPage: '#0f0f10',
-  bgSurface: '#141416',
-  textDefault: '#f6f6f6',
-  textMuted: '#c9c9c9',
-  borderSubtle: '#2a2a2b',
-  // Keep brand hues identical to preserve recognition
-  brand: colors.brand,
-  success: colors.green,
-  warning: colors.orange,
-  error: colors.coral,
-};
-
-
-
-

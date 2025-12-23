@@ -1,0 +1,182 @@
+[
+  {
+    "packageCode": "JC004",
+    "slug": "HK_3_30",
+    "name": "Hong Kong 3GB 30Days",
+    "price": 18000,
+    "currencyCode": "USD",
+    "volume": 3221225472,
+    "smsStatus": 2,
+    "dataType": 1,
+    "unusedValidTime": 180,
+    "duration": 30,
+    "durationUnit": "DAY",
+    "location": "HK",
+    "locationCode": "HK",
+    "description": "Hong Kong 3GB 30Days",
+    "activeType": 2,
+    "favorite": false,
+    "retailPrice": 36000,
+    "speed": "3G/4G/5G",
+    "ipExport": "HK",
+    "supportTopUpType": 2,
+    "fupPolicy": "",
+    "locationNetworkList": [
+      {
+        "locationName": "Hong Kong (China)",
+        "locationLogo": "/img/flags/hk.png",
+        "locationCode": "HK",
+        "operatorList": [
+          {
+            "operatorName": "CMHK",
+            "networkType": "5G"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "packageCode": "JC005",
+    "slug": "HK_5_30",
+    "name": "Hong Kong 5GB 30Days",
+    "price": 27000,
+    "currencyCode": "USD",
+    "volume": 5368709120,
+    "smsStatus": 2,
+    "dataType": 1,
+    "unusedValidTime": 180,
+    "duration": 30,
+    "durationUnit": "DAY",
+    "location": "HK",
+    "locationCode": "HK",
+    "description": "Hong Kong 5GB 30Days",
+    "activeType": 2,
+    "favorite": false,
+    "retailPrice": 54000,
+    "speed": "3G/4G/5G",
+    "ipExport": "HK",
+    "supportTopUpType": 2,
+    "fupPolicy": "",
+    "locationNetworkList": [
+      {
+        "locationName": "Hong Kong (China)",
+        "locationLogo": "/img/flags/hk.png",
+        "locationCode": "HK",
+        "operatorList": [
+          {
+            "operatorName": "CMHK",
+            "networkType": "5G"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "packageCode": "JC021",
+    "slug": "HK_1_7",
+    "name": "Hong Kong 1GB 7Days",
+    "price": 7000,
+    "currencyCode": "USD",
+    "volume": 1073741824,
+    "smsStatus": 2,
+    "dataType": 1,
+    "unusedValidTime": 180,
+    "duration": 7,
+    "durationUnit": "DAY",
+    "location": "HK",
+    "locationCode": "HK",
+    "description": "Hong Kong 1GB 7Days",
+    "activeType": 2,
+    "favorite": false,
+    "retailPrice": 14000,
+    "speed": "3G/4G/5G",
+    "ipExport": "HK",
+    "supportTopUpType": 2,
+    "fupPolicy": "",
+    "locationNetworkList": [
+      {
+        "locationName": "Hong Kong (China)",
+        "locationLogo": "/img/flags/hk.png",
+        "locationCode": "HK",
+        "operatorList": [
+          {
+            "operatorName": "CMHK",
+            "networkType": "5G"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "packageCode": "JC022",
+    "slug": "HK_3_15",
+    "name": "Hong Kong 3GB 15Days",
+    "price": 17000,
+    "currencyCode": "USD",
+    "volume": 3221225472,
+    "smsStatus": 2,
+    "dataType": 1,
+    "unusedValidTime": 180,
+    "duration": 15,
+    "durationUnit": "DAY",
+    "location": "HK",
+    "locationCode": "HK",
+    "description": "Hong Kong 3GB 15Days",
+    "activeType": 2,
+    "favorite": false,
+    "retailPrice": 34000,
+    "speed": "3G/4G/5G",
+    "ipExport": "HK",
+    "supportTopUpType": 2,
+    "fupPolicy": "",
+    "locationNetworkList": [
+      {
+        "locationName": "Hong Kong (China)",
+        "locationLogo": "/img/flags/hk.png",
+        "locationCode": "HK",
+        "operatorList": [
+          {
+            "operatorName": "CMHK",
+            "networkType": "5G"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "packageCode": "JC023",
+    "slug": "HK_10_30",
+    "name": "Hong Kong 10GB 30Days",
+    "price": 47000,
+    "currencyCode": "USD",
+    "volume": 10737418240,
+    "smsStatus": 2,
+    "dataType": 1,
+    "unusedValidTime": 180,
+    "duration": 30,
+    "durationUnit": "DAY",
+    "location": "HK",
+    "locationCode": "HK",
+    "description": "Hong Kong 10GB 30Days",
+    "activeType": 2,
+    "favorite": false,
+    "retailPrice": 94000,
+    "speed": "3G/4G/5G",
+    "ipExport": "HK",
+    "supportTopUpType": 2,
+    "fupPolicy": "",
+    "locationNetworkList": [
+      {
+        "locationName": "Hong Kong (China)",
+        "locationLogo": "/img/flags/hk.png",
+        "locationCode": "HK",
+        "operatorList": [
+          {
+            "operatorName": "CMHK",
+            "networkType": "5G"
+          }
+        ]
+      }
+    ]
+  }
+]

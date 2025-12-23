@@ -1,18 +1,37 @@
-
 import { View, Text, StyleSheet, Pressable, ScrollView } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Clipboard from 'expo-clipboard';
 import { useRouter } from 'expo-router';
-
-import { Colors } from '../styles/colors';
-import { Gradients } from '../styles/gradients';
-import { Spacing } from '../styles/spacing';
-import { Typography } from '../styles/typography';
+import { Colors as ThemeColors, Spacing as ThemeSpacing, Typography as ThemeTypography } from '@/lib/theme';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+const Spacing = ThemeSpacing || {
+  xs: 4, sm: 8, md: 16, lg: 24, xl: 32, xxl: 48
+};
+const Colors = ThemeColors || {
+  textPrimary: '#FFFFFF',
+  textSecondary: '#A0A0A0',
+  textMuted: '#666666',
+  primary: '#2F66F6',
+  surface: '#1A1A1A'
+};
+const Typography = ThemeTypography || {
+  h1: { fontSize: 32, fontWeight: '700' },
+  h2: { fontSize: 24, fontWeight: '600' },
+  body: { fontSize: 16, fontWeight: '400' },
+  caption: { fontSize: 12, fontWeight: '400' }
+};
+
+const Gradients = {
+  background: ['#000000', '#121212'] as const,
+  primaryGlow: ['rgba(47, 102, 246, 0.3)', 'rgba(47, 102, 246, 0.1)'] as const,
+};
+
+// 1. IMPORT REAL DATA (FeaturedPlans.json)
+import featuredPlansData from '@/lib/data/featuredPlans.json';
 
 export default function DashboardScreen() {
-  const router = useRouter(); // <--- 2. Initialize router
+  const router = useRouter();
   const insets = useSafeAreaInsets();
   const userName = 'Hrishique';
   const walletBalance = '124.32 USDC';
@@ -22,8 +41,10 @@ export default function DashboardScreen() {
     await Clipboard.setStringAsync(walletAddress);
   };
 
-  return (
+  // 2. GET FEATURED PLANS
+  const featuredPlans = featuredPlansData || [];
 
+  return (
     <LinearGradient
       colors={Gradients.background}
       style={[styles.container, { paddingTop: insets.top }]}
@@ -70,7 +91,7 @@ export default function DashboardScreen() {
 
             <View style={styles.progressTrack}>
               <LinearGradient
-                colors={Gradients.progress}
+                colors={Gradients.progress || ['#22c55e', '#15803d']} // Fallback if Gradients.progress missing
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 0 }}
                 style={styles.progressFill}
@@ -79,40 +100,60 @@ export default function DashboardScreen() {
           </View>
         </View>
 
-        {/* Featured Plans - UPDATED SECTION */}
+        {/* Featured Plans - DYNAMIC SECTION */}
         <View style={styles.section}>
           {/* Header Row with "View All" Link */}
           <View style={styles.sectionHeaderRow}>
             <Text style={styles.sectionTitle}>Featured Plans</Text>
             <Pressable onPress={() => router.push('/(tabs)/plans')}>
-              <Text style={styles.linkText}>View All Plans --> </Text>
+              <Text style={styles.linkText}>View All Plans --&gt; </Text>
             </Pressable>
           </View>
 
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            {['Global 10GB', 'Europe 5GB', 'Asia 3GB','Australia 3GB','Africa 3GB'].map((plan) => (
-              <View key={plan} style={styles.featuredCard}>
-                <Text style={styles.featuredTitle}>{plan}</Text>
-                <Text style={styles.featuredMeta}>30 days</Text>
+            {featuredPlans.map((plan) => {
+              // Calculate Price
+              const displayPrice = (plan.price / 10000).toFixed(2);
 
+              // Calculate Volume (Bytes -> GB)
+              const volumeGB = plan.volume ? (plan.volume / (1024 * 1024 * 1024)).toFixed(0) : '1';
+              const dataAmount = volumeGB + ' GB';
 
-                {/* --- CONTAINER FOR SIDE-BY-SIDE LAYOUT --- */}
-              <View style={styles.priceRow}>
-                <Text style={styles.featuredPrice}>$18</Text>
+              return (
+                <View key={plan.packageCode} style={styles.featuredCard}>
+                  {/* Title */}
+                  <Text
+                    style={styles.featuredTitle}
+                    numberOfLines={1}
+                    ellipsizeMode='tail'
+                  >
+                    {plan.name}
+                  </Text>
 
-                <Pressable
-                  style={styles.buyButton}
-                  onPress={() => router.push('/(tabs)/plans')}
-                >
-                  <Text style={styles.buyButtonText}>Buy</Text>
-                </Pressable>
-              </View>
+                  {/* Data Volume (Big & Bold) */}
+                  <Text style={styles.featuredData}>
+                    {dataAmount}
+                  </Text>
 
-                {/* ----------------------------------------- */}
+                  {/* Meta (Duration) */}
+                  <Text style={styles.featuredMeta}>
+                    {plan.duration} {plan.durationUnit}s
+                  </Text>
 
+                  {/* Price Row */}
+                  <View style={styles.priceRow}>
+                    <Text style={styles.featuredPrice}>${displayPrice}</Text>
 
-              </View>
-            ))}
+                    <Pressable
+                      style={styles.buyButton}
+                      onPress={() => router.push('/(tabs)/plans')}
+                    >
+                      <Text style={styles.buyButtonText}>Buy</Text>
+                    </Pressable>
+                  </View>
+                </View>
+              );
+            })}
           </ScrollView>
         </View>
 
@@ -192,7 +233,6 @@ const styles = StyleSheet.create({
   section: {
     marginBottom: Spacing.xxl,
   },
-  // NEW STYLE: Flex row for Title + Link
   sectionHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -202,13 +242,11 @@ const styles = StyleSheet.create({
   sectionTitle: {
     color: Colors.textPrimary,
     ...Typography.h2,
-    // marginBottom removed here because parent handles it
   },
-  // NEW STYLE: The link text style
   linkText: {
-    color: Colors.primary || '#AB9FF2', // Fallback color if variable missing
+    color: Colors.primary || '#AB9FF2',
     fontSize: 14,
-     textDecorationLine: 'underline',
+    textDecorationLine: 'underline',
     fontWeight: '600',
   },
   /* Active Plan */
@@ -240,53 +278,54 @@ const styles = StyleSheet.create({
   },
   /* Featured */
   featuredCard: {
-    width: 140,
+    width: 155,
     backgroundColor: Colors.surface,
     borderRadius: 18,
     padding: Spacing.md,
     marginRight: Spacing.sm,
   },
   featuredTitle: {
-    color: Colors.textPrimary,
-    fontSize: 14,
+    color: Colors.textSecondary, // Subtle title
+    fontSize: 13,
     fontWeight: '500',
+    marginBottom: 4,
+  },
+  featuredData: {
+    color: Colors.textPrimary, // Big & Bold Data
+    fontSize: 20,
+    fontWeight: '700',
+    marginBottom: 2,
   },
   featuredMeta: {
     color: Colors.textSecondary,
-    ...Typography.caption,
-    marginTop: Spacing.sm,
+    fontSize: 13,
+    fontWeight: '400',
   },
   priceRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between', // 👈 pushes Buy to the right
-    marginTop: 12,
+    justifyContent: 'space-between',
+    marginTop: 16, // Increased spacing for balance
   },
-
   featuredPrice: {
     color: Colors.textPrimary,
     fontSize: 18,
     fontWeight: '600',
   },
-
   buyButton: {
-     backgroundColor: '#2F66F6', // Use the specific blue hex here directly if not using the Colors variable
-       // OR use: backgroundColor: Colors.primary,
-       paddingHorizontal: 16,
-       paddingVertical: 8,
-       borderRadius: 8, // Slightly sharper corners look better with this blue
-       alignSelf: 'flex-end',
-       justifyContent: 'center',
-       alignItems: 'center',
+     backgroundColor: '#2F66F6',
+     paddingHorizontal: 12,
+     paddingVertical: 6,
+     borderRadius: 8,
+     alignSelf: 'flex-end',
+     justifyContent: 'center',
+     alignItems: 'center',
   },
-
   buyButtonText: {
-    color: '#000',
+    color: '#FFFFFF',
     fontWeight: '600',
-    fontSize: 14,
+    fontSize: 12,
   },
-
-
   /* Referral */
   referralCard: {
     backgroundColor: Colors.surface,
