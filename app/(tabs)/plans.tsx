@@ -11,6 +11,7 @@ import {
   TouchableWithoutFeedback,
   ActivityIndicator
 } from 'react-native';
+import { PurchaseModal } from '@/components/modals/PurchaseModal';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -49,6 +50,9 @@ const ITEMS_PER_PAGE = 15; // Number of items to load at a time
 
 export default function PlansScreen() {
   const insets = useSafeAreaInsets();
+    const [selectedPlan, setSelectedPlan] = useState<any | null>(null);
+    const [isModalVisible, setModalVisible] = useState(false);
+
 
   // STATE MANAGEMENT
   const [activeRegion, setActiveRegion] = useState('Global');
@@ -165,11 +169,15 @@ export default function PlansScreen() {
           </Text>
 
           <Pressable
-            style={styles.buyButton}
-            onPress={() => console.log("Open Modal for:", item.packageCode)}
-          >
-            <Text style={styles.buyText}>Buy Plan</Text>
-          </Pressable>
+                      style={styles.buyButton}
+                      // 3. Update onPress
+                      onPress={() => {
+                         setSelectedPlan(item);
+                         setModalVisible(true);
+                      }}
+                    >
+                      <Text style={styles.buyText}>Buy Plan</Text>
+                    </Pressable>
         </BlurView>
       </LinearGradient>
     );
@@ -289,6 +297,12 @@ export default function PlansScreen() {
             <Text style={styles.emptyText}>No plans found for "{searchQuery}"</Text>
           }
         />
+         <PurchaseModal
+                 visible={isModalVisible}
+                 plan={selectedPlan}
+                 onClose={() => setModalVisible(false)}
+              />
+
 
       </LinearGradient>
     </TouchableWithoutFeedback>

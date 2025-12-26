@@ -1,5 +1,34 @@
 import instance from './axiosInstance'
 
+// --- TYPE DEFINITIONS FOR PAYLOADS ---
+interface OrderEsimPayload {
+  transactionId: string; // Already in your file
+  amount: number;
+  packageInfoList: {
+    packageCode: string;
+    count: number;
+    price: number;
+  }[];
+  idempotencyKey: string; // Already in your file
+}
+
+interface GetProfilesPayload {
+  orderNo: string;
+  esimTranNo?: string; // Optional
+  iccid?: string;      // Optional
+  pager?: {             // Optional but good practice
+    pageNum: number;
+    pageSize: number;
+  };
+}
+
+interface RedeemInvitePayload {
+  code: string;
+  redeemedByAddress: string;
+}
+
+// --- API SERVICE DEFINITION ---
+
 export const apiService = {
   login: async (data: {
     walletAddress: string
@@ -75,35 +104,22 @@ cancelEsimProfile: async (payload: {
     payload
   ).then((r) => r.data)
 },
-orderEsim: async (payload: {
-  transactionId: string
-  amount: number
-  packageInfoList: any[]
-  idempotencyKey: string
-}) => {
-  const res = await instance.post(
-    '/api/esimAccess/orderSim',
-    payload
-  )
-  return res.data
-},
 
-getAllocatedProfiles: async (payload: { orderNo: string }) => {
-  const res = await instance.post(
-    '/api/esimAccess/getAllocatedProfiles',
-    payload
-  )
-  return res.data
-},
+ // --- UPDATED METHOD ---
+  orderEsim: async (payload: OrderEsimPayload) => {
+    const res = await instance.post('/api/esimAccess/orderSim', payload)
+    return res.data
+  },
 
-redeemInviteCode: async (payload: {
-  code: string
-  redeemedByAddress: string
-}) => {
-  const res = await instance.post(
-    '/api/invite/redeem',
-    payload
-  )
-  return res.data
-}
+  // --- UPDATED METHOD ---
+  getAllocatedProfiles: async (payload: GetProfilesPayload) => {
+    const res = await instance.post('/api/esimAccess/getAllocatedProfiles', payload)
+    return res.data
+  },
+
+  // --- UPDATED METHOD ---
+  redeemInviteCode: async (payload: RedeemInvitePayload) => {
+    const res = await instance.post('/api/invite/redeem', payload)
+    return res.data
+  }
 }

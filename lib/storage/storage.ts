@@ -42,7 +42,9 @@ export const storage = {
 
   // ----- Tokens (sensitive)
   async getAccessToken() {
-    return secureStorage.get(StorageKey.ACCESS_TOKEN)
+    const token = await secureStorage.get(StorageKey.ACCESS_TOKEN);
+    console.log(`[STORAGE] Token retrieved: ${token ? 'EXISTS (starts with ' + token.substring(0, 10) + '...)' : 'MISSING'}`);
+    return token;
   },
 
   setAccessToken: async (token: string) => {
@@ -50,8 +52,8 @@ export const storage = {
       console.warn('Storage.setAccessToken received invalid token:', token)
       return
     }
-
-    await SecureStore.setItemAsync('access_token', token)
+console.log("STORAGE : Setting Token in Secure Store:", token);
+    await SecureStore.setItemAsync(StorageKey.ACCESS_TOKEN, token)
   },
 
 

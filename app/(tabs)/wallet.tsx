@@ -11,7 +11,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function WalletScreen() {
       const insets = useSafeAreaInsets();
-  const walletAddress = '0x9A3f82B91A...D92C';
+  const walletAddress = 'fba3f82B91A...D92C';
   const totalBalance = '$124.32';
 
   const copyAddress = async () => {

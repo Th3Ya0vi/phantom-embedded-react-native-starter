@@ -4,6 +4,8 @@ import * as Clipboard from 'expo-clipboard';
 import { useRouter } from 'expo-router';
 import { Colors as ThemeColors, Spacing as ThemeSpacing, Typography as ThemeTypography } from '@/lib/theme';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useState } from 'react';
+import { PurchaseModal } from '@/components/modals/PurchaseModal'; // Ensure path is correct
 
 const Spacing = ThemeSpacing || {
   xs: 4, sm: 8, md: 16, lg: 24, xl: 32, xxl: 48
@@ -31,11 +33,19 @@ const Gradients = {
 import featuredPlansData from '@/lib/data/featuredPlans.json';
 
 export default function DashboardScreen() {
+     const [selectedPlan, setSelectedPlan] = useState<any | null>(null);
+      const [isModalVisible, setModalVisible] = useState(false);
+
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const userName = 'Hrishique';
   const walletBalance = '124.32 USDC';
-  const walletAddress = '0x9A3f82B91A...D92C';
+  const walletAddress = 'fba3f82B91A...D92C';
+
+ const handleBuyPress = (plan: any) => {
+    setSelectedPlan(plan);
+    setModalVisible(true);
+  };
 
   const handleCopyAddress = async () => {
     await Clipboard.setStringAsync(walletAddress);
@@ -141,18 +151,20 @@ export default function DashboardScreen() {
                   </Text>
 
                   {/* Price Row */}
-                  <View style={styles.priceRow}>
-                    <Text style={styles.featuredPrice}>${displayPrice}</Text>
+                    <View style={styles.priceRow}>
+                                       <Text style={styles.featuredPrice}>${displayPrice}</Text>
 
-                    <Pressable
-                      style={styles.buyButton}
-                      onPress={() => router.push('/(tabs)/plans')}
-                    >
-                      <Text style={styles.buyButtonText}>Buy</Text>
-                    </Pressable>
-                  </View>
-                </View>
-              );
+                                       <Pressable
+                                         style={styles.buyButton}
+                                         // 3. UPDATE ONPRESS
+                                         onPress={() => handleBuyPress(plan)}
+                                       >
+                                         <Text style={styles.buyButtonText}>Buy</Text>
+                                       </Pressable>
+                                     </View>
+                                  </View>
+                                );
+
             })}
           </ScrollView>
         </View>
@@ -171,6 +183,12 @@ export default function DashboardScreen() {
           </Pressable>
         </View>
       </ScrollView>
+       <PurchaseModal
+                visible={isModalVisible}
+                plan={selectedPlan}
+                onClose={() => setModalVisible(false)}
+             />
+
     </LinearGradient>
   );
 }

@@ -1,9 +1,43 @@
-
 // File: app/(tabs)/_layout.tsx
-import { Tabs } from 'expo-router';
+import React, { useEffect } from 'react';
 import { Ionicons } from '@expo/vector-icons'; // We use this for icons
+import { Redirect, Tabs } from 'expo-router';
+import { useSession } from '@/lib/session/SessionContext';
+import { ActivityIndicator, View, StyleSheet } from 'react-native';
+import { useAuthActions } from '@/hooks/useAuthActions'; // Import your robust logout
+import { Colors } from '@/lib/theme';
+import { useAccounts } from '@phantom/react-native-sdk';
 
 export default function TabLayout() {
+     const { isAuthenticated, isHydrated } = useSession();
+       const { isConnected } = useAccounts();
+       const { logout } = useAuthActions(); // This is the version that handles API + Wallet + Redirect
+
+     // 1. SECURITY SYNC: Automatically log out if wallet is disconnected
+      useEffect(() => {
+        // If the storage is loaded (isHydrated)
+        // AND the user has a token (isAuthenticated)
+        // BUT the wallet is no longer connected (!isConnected)
+        if (isHydrated && !isAuthenticated ) {
+          console.warn("[SECURITY] Wallet disconnected manually. Cleaning up session...");
+          logout(); // Triggers the full cleanup and moves user to /home
+        }
+      }, [isConnected, isAuthenticated, isHydrated]);
+
+      // 2. HYDRATION GUARD: Wait for the app to finish reading tokens from storage
+      if (!isHydrated) {
+        return (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color={Colors?.primary || '#2F66F6'} />
+          </View>
+        );
+      }
+   if (!isAuthenticated) {
+        logout();
+      return <Redirect href="/home" />;
+    }
+
+
   return (
     <Tabs
       screenOptions={{

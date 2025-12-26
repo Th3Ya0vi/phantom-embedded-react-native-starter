@@ -19,7 +19,9 @@ export const SessionProvider = ({ children }: { children: React.ReactNode }) => 
     const hydrate = async () => {
       try {
         const storedUser = await storage.getUser()
+        console.log(`[HYDRATION] Getting STOREDUSER FROM SecureStore: ${storedUser}...`);
         const token = await storage.getAccessToken()
+        console.log(`[HYDRATION] Getting STORED TOKEN FROM SecureStore: ${token}...`);
 
         if (storedUser && token) {
           // Parse the user if it was stored as a string
@@ -40,8 +42,8 @@ export const SessionProvider = ({ children }: { children: React.ReactNode }) => 
   }, [])
 
   const login = async (userData: any, token: string) => {
-    await storage.setUser(userData)     //
-    await storage.setAccessToken(token) //
+    await storage.setUser(userData)
+    await storage.setAccessToken(token)
     setUser(userData)
   }
 

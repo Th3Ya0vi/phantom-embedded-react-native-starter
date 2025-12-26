@@ -87,3 +87,28 @@ export const semantic = {
   bgPage: baseColors.paper,
   link: baseColors.brand,
 };
+
+export const Colors = {
+  background: '#04070D', // Deep space black
+  surface: 'rgba(255, 255, 255, 0.05)', // The "Glass" base
+  glassBorder: 'rgba(255, 255, 255, 0.12)', // Thin, elegant border
+  primary: '#2F66F6', // Brand Blue
+  accent: '#00E5FF', // Electric Cyan
+  textPrimary: '#FFFFFF',
+  textSecondary: '#94A3B8', // Slate grey
+  error: '#FF4B4B',
+  success: '#00C853',
+};
+
+export const Gradients = {
+  main: ['#04070D', '#0F172A'], // Background depth
+  primaryGlow: ['#2F66F6', '#00E5FF'], // For buttons/active states
+  glass: ['rgba(255, 255, 255, 0.1)', 'rgba(255, 255, 255, 0.03)'],
+};
+
+export const GlassStyle = {
+  borderWidth: 1,
+  borderColor: Colors.glassBorder,
+  borderRadius: 24,
+  backgroundColor: 'rgba(15, 23, 42, 0.6)', // Tinted glass
+};
