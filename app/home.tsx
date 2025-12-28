@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import 'react-native-get-random-values';
 import { View, Text, StyleSheet, Image, Dimensions } from 'react-native'
 import { useAccounts } from '@phantom/react-native-sdk'
 import { Stack, useRouter, Redirect } from 'expo-router'

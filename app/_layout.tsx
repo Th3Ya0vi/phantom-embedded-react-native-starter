@@ -1,6 +1,16 @@
 // MUST be first
 import 'react-native-get-random-values'
+import { Buffer } from 'buffer';
 
+// 2. Manually polyfill global variables
+if (typeof global.Buffer === 'undefined') {
+  global.Buffer = Buffer;
+}
+
+// 3. Force patch crypto if the library failed to do it globally
+if (typeof window === 'object' && !window.crypto) {
+    (window as any).crypto = require('react-native-get-random-values');
+}
 import { Stack } from 'expo-router'
 import { ToastProvider } from '@/lib/ui/ToastContext';
 import { SessionProvider } from '@/lib/session/SessionContext'

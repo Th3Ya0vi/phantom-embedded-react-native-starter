@@ -1,9 +1,8 @@
-import React, { useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, Modal, Pressable, Alert, StyleSheet } from 'react-native';
+import React from 'react';
+import { View, Text, StyleSheet, Modal, Pressable, Alert } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import QRCode from 'react-native-qrcode-svg';
 import { BlurView } from 'expo-blur';
-import ConfettiCannon from 'react-native-confetti-cannon'; // 1. Import Confetti
 import { Spacing } from '@/lib/theme';
 import type { EsimProfile } from '@/hooks/useEsimPurchase';
 
@@ -25,18 +24,6 @@ export function ActivationModal({ visible, onClose, profile }: ActivationModalPr
     <Modal animationType="slide" transparent={true} visible={visible}>
       <View style={styles.overlay}>
         <BlurView intensity={40} tint="dark" style={StyleSheet.absoluteFill} />
-
-        {/* 2. THE CONFETTI CANNON
-            We use colors that match your Blue/Cyan theme for a 'soothing' celebrate effect
-        */}
-        {visible && (
-          <ConfettiCannon
-            count={200}
-            origin={{x: -10, y: 0}}
-            fadeOut={true}
-            colors={['#2F66F6', '#00E5FF', '#2979FF', '#FFFFFF']}
-          />
-        )}
 
         <View style={styles.container}>
           <View style={styles.successBadge}>
@@ -64,7 +51,7 @@ export function ActivationModal({ visible, onClose, profile }: ActivationModalPr
           </View>
 
           <Pressable style={styles.doneButton} onPress={onClose}>
-            <Text style={styles.doneText}>Complete Setup</Text>
+            <Text style={styles.doneText}>CLose</Text>
           </Pressable>
         </View>
       </View>

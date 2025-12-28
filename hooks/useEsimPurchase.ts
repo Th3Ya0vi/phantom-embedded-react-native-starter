@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import { useApiActions } from './useApiActions';
 import { randomUUID } from 'expo-crypto'; // For creating idempotencyKey
+import { useSession } from '@/lib/session/SessionContext';
 
 // --- TYPE DEFINITIONS ---
 
@@ -25,6 +26,8 @@ export const useEsimPurchase = () => {
   const [status, setStatus] = useState<PurchaseStatus>('idle');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [profile, setProfile] = useState<EsimProfile | null>(null);
+    const { user } = useSession();
+
 
   // We get the actual API-calling functions from another hook (good practice)
   const { handleOrderEsim, handleGetAllocatedProfiles } = useApiActions();
@@ -34,6 +37,7 @@ export const useEsimPurchase = () => {
    * It will try 10 times, waiting 3 seconds between each attempt.
    */
   const pollForProfile = useCallback(async (orderNo: string, attempt = 1) => {
+      const userId = user?.id || user?._id;
     if (attempt > 5) { // Max retries reached
       setStatus('error');
       setErrorMessage('Provisioning is taking longer than expected. Please check your profile later eSIM will be delivered shortly.');
@@ -42,7 +46,7 @@ export const useEsimPurchase = () => {
 
     try {
       console.log(`[POLL] Attempt ${attempt} for Order: ${orderNo}`);
-      const payload = { orderNo, pager: { pageNum: 1, pageSize: 6 } };
+      const payload = {userId, orderNo, pager: { pageNum: 1, pageSize: 6 } };
       console.log(`[ pollForProfile ] Starting eSIM provisioning orderNo: ${orderNo}`,JSON.stringify(payload, null, 2));
       const response = await handleGetAllocatedProfiles(payload);
 

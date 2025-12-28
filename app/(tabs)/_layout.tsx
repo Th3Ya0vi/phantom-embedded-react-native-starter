@@ -1,5 +1,7 @@
 // File: app/(tabs)/_layout.tsx
 import React, { useEffect } from 'react';
+import 'react-native-get-random-values'
+
 import { Ionicons } from '@expo/vector-icons'; // We use this for icons
 import { Redirect, Tabs } from 'expo-router';
 import { useSession } from '@/lib/session/SessionContext';
@@ -15,27 +17,27 @@ export default function TabLayout() {
 
      // 1. SECURITY SYNC: Automatically log out if wallet is disconnected
       useEffect(() => {
-        // If the storage is loaded (isHydrated)
-        // AND the user has a token (isAuthenticated)
-        // BUT the wallet is no longer connected (!isConnected)
-        if (isHydrated && !isAuthenticated ) {
-          console.warn("[SECURITY] Wallet disconnected manually. Cleaning up session...");
-          logout(); // Triggers the full cleanup and moves user to /home
-        }
-      }, [isConnected, isAuthenticated, isHydrated]);
+          if (isHydrated && !isConnected && isAuthenticated) {
+            console.log("[SECURITY] Wallet disconnected manually. Wiping local session...");
+            logout(); // Just clear the local token
+          }
+        }, [isConnected, isAuthenticated, isHydrated]);
 
-      // 2. HYDRATION GUARD: Wait for the app to finish reading tokens from storage
-      if (!isHydrated) {
-        return (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color={Colors?.primary || '#2F66F6'} />
-          </View>
-        );
-      }
-   if (!isAuthenticated) {
-        logout();
-      return <Redirect href="/home" />;
-    }
+        // 1. Wait for storage
+        if (!isHydrated) {
+          return (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="large" color="#2F66F6" />
+            </View>
+          );
+        }
+
+        // 2. THE GATEKEEPER
+        // If no token exists, the user is NOT allowed in this folder. Redirect to Home.
+        if (!isAuthenticated) {
+          console.log("[LAYOUT] No session. Redirecting to home.");
+          return <Redirect href="/home" />;
+        }
 
 
   return (

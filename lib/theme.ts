@@ -97,13 +97,15 @@ export const Colors = {
   textPrimary: '#FFFFFF',
   textSecondary: '#94A3B8', // Slate grey
   error: '#FF4B4B',
-  success: '#00C853',
+  success: '#00C853'
 };
 
 export const Gradients = {
   main: ['#04070D', '#0F172A'], // Background depth
   primaryGlow: ['#2F66F6', '#00E5FF'], // For buttons/active states
   glass: ['rgba(255, 255, 255, 0.1)', 'rgba(255, 255, 255, 0.03)'],
+  background:  ['#04070D', '#0F172A'],
+  primaryGlow: ['#2F66F6', '#00E5FF'],
 };
 
 export const GlassStyle = {

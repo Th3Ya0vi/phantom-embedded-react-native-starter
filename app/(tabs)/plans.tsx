@@ -1,5 +1,4 @@
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
-import {
+import React, { useState, useMemo, useEffect, useCallback, memo } from 'react';import {
   View,
   Text,
   StyleSheet,
@@ -9,384 +8,243 @@ import {
   ScrollView,
   Keyboard,
   TouchableWithoutFeedback,
-  ActivityIndicator
+  Platform
 } from 'react-native';
-import { PurchaseModal } from '@/components/modals/PurchaseModal';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors as ThemeColors, Spacing as ThemeSpacing, Typography as ThemeTypography } from '@/lib/theme';
 
-// 2. FALLBACK OBJECTS
-const Colors = ThemeColors || {
-  textPrimary: '#FFFFFF',
-  textSecondary: '#A0A0A0',
-  textMuted: '#666666',
-  primary: '#2F66F6',
-  surface: '#1A1A1A'
-};
-
-const Spacing = ThemeSpacing || {
-  xs: 4, sm: 8, md: 16, lg: 24, xl: 32, xxl: 48
-};
-
-const Typography = ThemeTypography || {
-  h1: { fontSize: 32, fontWeight: '700' },
-  h2: { fontSize: 24, fontWeight: '600' },
-  body: { fontSize: 16, fontWeight: '400' },
-  caption: { fontSize: 12, fontWeight: '400' }
-};
-
+// Fallbacks
+const Colors = ThemeColors || { primary: '#2F66F6', textPrimary: '#FFF', textSecondary: '#AAA', surface: '#1A1A1A' };
+const Spacing = ThemeSpacing || { xs: 4, sm: 8, md: 16, lg: 24, xl: 32, xxl: 48 };
+const Typography = ThemeTypography || { h1: { fontSize: 32 }, h2: { fontSize: 24 }, body: { fontSize: 16 } };
 const Gradients = {
-  background: ['#000000', '#121212'] as const,
+  background: ['#04070D', '#0F172A'] as const,
   primaryGlow: ['rgba(47, 102, 246, 0.3)', 'rgba(47, 102, 246, 0.1)'] as const,
 };
 
-// Import your real data
 import allPlansData from '@/lib/data/allPlans.json';
+import { PurchaseModal } from '@/components/modals/PurchaseModal';
 
 const REGIONS = ['Global', 'Europe', 'Asia', 'USA', 'Africa'];
-const ITEMS_PER_PAGE = 15; // Number of items to load at a time
+const ITEMS_PER_PAGE = 10;
+
+// --- 1. MEMOIZED PLAN ITEM (Futuristic Design) ---
+const PlanItem = memo(({ item, onBuy }: { item: any, onBuy: (item: any) => void }) => {
+  return (
+    <View style={styles.cardContainer}>
+      {/* Outer Glow Border */}
+      <LinearGradient
+        colors={['rgba(255, 255, 255, 0.1)', 'rgba(255, 255, 255, 0.02)']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.cardBorder}
+      >
+        <BlurView intensity={Platform.OS === 'ios' ? 40 : 20} tint="dark" style={styles.cardContent}>
+
+          {/* Header: Title & Price */}
+          <View style={styles.cardHeader}>
+            <View style={styles.titleGroup}>
+              <Text style={styles.planTitle}>{item.name}</Text>
+              <View style={styles.regionBadge}>
+                <Text style={styles.regionText}>{item.locationName.toUpperCase()}</Text>
+              </View>
+            </View>
+            <View style={styles.priceGroup}>
+              <Text style={styles.currency}>$</Text>
+              <Text style={styles.price}>{item.displayPrice}</Text>
+            </View>
+          </View>
+
+          {/* Divider */}
+          <View style={styles.divider} />
+
+          {/* Details Row (Grid Layout) */}
+          <View style={styles.detailsRow}>
+            <View style={styles.detailItem}>
+              <Text style={styles.detailLabel}>DATA</Text>
+              <Text style={styles.detailValue}>{item.displayVolume}</Text>
+            </View>
+            <View style={styles.verticalLine} />
+            <View style={styles.detailItem}>
+              <Text style={styles.detailLabel}>VALIDITY</Text>
+              <Text style={styles.detailValue}>{item.duration} Days</Text>
+            </View>
+            <View style={styles.verticalLine} />
+            <View style={styles.detailItem}>
+              <Text style={styles.detailLabel}>SPEED</Text>
+              <Text style={styles.detailValue}>{item.speed}</Text>
+            </View>
+          </View>
+
+          {/* Buy Button (Neon Style) */}
+          <Pressable
+            style={({ pressed }) => [styles.buyButton, pressed && { opacity: 0.8 }]}
+            onPress={() => onBuy(item)}
+          >
+            <LinearGradient
+              colors={['#2F66F6', '#00E5FF']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.buyGradient}
+            >
+              <Text style={styles.buyText}>Purchase Plan</Text>
+              <Text style={styles.arrow}>→</Text>
+            </LinearGradient>
+          </Pressable>
+
+        </BlurView>
+      </LinearGradient>
+    </View>
+  );
+});
 
 export default function PlansScreen() {
   const insets = useSafeAreaInsets();
-    const [selectedPlan, setSelectedPlan] = useState<any | null>(null);
-    const [isModalVisible, setModalVisible] = useState(false);
-
-
-  // STATE MANAGEMENT
   const [activeRegion, setActiveRegion] = useState('Global');
   const [searchQuery, setSearchQuery] = useState('');
   const [showSuggestions, setShowSuggestions] = useState(false);
-
-  // PAGINATION STATE
   const [visibleCount, setVisibleCount] = useState(ITEMS_PER_PAGE);
-  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [selectedPlan, setSelectedPlan] = useState<any | null>(null);
+  const [isModalVisible, setModalVisible] = useState(false);
 
-  // 1. EXTRACT UNIQUE COUNTRIES FOR AUTOCOMPLETE
-  const allLocationNames = useMemo(() => {
-    const locations = new Set<string>();
-    allPlansData.forEach(plan => {
-      const locName = plan.locationNetworkList?.[0]?.locationName;
-      if (locName) locations.add(locName);
-    });
-    return Array.from(locations).sort();
-  }, []);
-
-  // 2. FILTER SUGGESTIONS
-  const suggestions = useMemo(() => {
-    if (!searchQuery || searchQuery.length < 2) return [];
-    return allLocationNames.filter(name =>
-      name.toLowerCase().includes(searchQuery.toLowerCase())
-    ).slice(0, 6);
-  }, [searchQuery, allLocationNames]);
-
-  // 3. MAIN FILTERING LOGIC
-  // This calculates the TOTAL available results based on filters
+  // --- 2. PRE-CALCULATE DATA ---
   const allFilteredPlans = useMemo(() => {
-    let data = allPlansData;
+    let data = allPlansData.map(plan => ({
+      ...plan,
+      locationName: plan.locationNetworkList?.[0]?.locationName || 'Global',
+      displayPrice: (plan.price / 10000).toFixed(2),
+      displayVolume: plan.volume ? (plan.volume / (1024 ** 3)).toFixed(0) + ' GB' : '1 GB'
+    }));
 
     if (searchQuery) {
       const lowerQuery = searchQuery.toLowerCase();
-      data = data.filter(plan => {
-        const nameMatch = plan.name.toLowerCase().includes(lowerQuery);
-        const countryName = plan.locationNetworkList?.[0]?.locationName || '';
-        const countryMatch = countryName.toLowerCase().includes(lowerQuery);
-        return nameMatch || countryMatch;
-      });
+      return data.filter(p => p.name.toLowerCase().includes(lowerQuery) || p.locationName.toLowerCase().includes(lowerQuery));
     }
-    else if (activeRegion !== 'Global') {
-       data = data.filter(plan =>
-         plan.name.includes(activeRegion) ||
-         plan.locationNetworkList?.[0]?.locationName?.includes(activeRegion)
-       );
+    if (activeRegion !== 'Global') {
+      return data.filter(p => p.name.includes(activeRegion) || p.locationName.includes(activeRegion));
     }
-
     return data;
   }, [searchQuery, activeRegion]);
 
-  // 4. RESET PAGINATION WHEN FILTERS CHANGE
-  useEffect(() => {
-    setVisibleCount(ITEMS_PER_PAGE);
-  }, [searchQuery, activeRegion]);
+  const displayedPlans = useMemo(() => allFilteredPlans.slice(0, visibleCount), [allFilteredPlans, visibleCount]);
 
-  // 5. SLICE DATA FOR RENDERING
-  // Only show the items allowed by visibleCount
-  const displayedPlans = useMemo(() => {
-    return allFilteredPlans.slice(0, visibleCount);
-  }, [allFilteredPlans, visibleCount]);
+  const handleLoadMore = useCallback(() => {
+    if (visibleCount < allFilteredPlans.length) {
+      setVisibleCount(prev => prev + ITEMS_PER_PAGE);
+    }
+  }, [visibleCount, allFilteredPlans.length]);
 
-  // 6. LOAD MORE FUNCTION
-  const handleLoadMore = () => {
-    if (isLoadingMore) return;
-    if (visibleCount >= allFilteredPlans.length) return;
-
-    setIsLoadingMore(true);
-
-    // Slight delay to simulate network/smoothing and show spinner
-    setTimeout(() => {
-        setVisibleCount(prev => prev + ITEMS_PER_PAGE);
-        setIsLoadingMore(false);
-    }, 200);
-  };
-
-  const handleSelectSuggestion = (suggestion: string) => {
-    setSearchQuery(suggestion);
-    setShowSuggestions(false);
-    Keyboard.dismiss();
-  };
-
-  const renderPlanItem = ({ item }: { item: any }) => {
-    const displayPrice = (item.price / 10000).toFixed(2);
-    const volumeGB = item.volume ? (item.volume / (1024 * 1024 * 1024)).toFixed(0) : '1';
-    const dataAmount = volumeGB + ' GB';
-
-    const countryInfo = item.locationNetworkList?.[0];
-    const countryName = countryInfo?.locationName || 'Global';
-
-    return (
-      <LinearGradient
-        colors={['rgba(255,255,255,0.08)', 'rgba(255,255,255,0.02)']}
-        style={styles.planGlow}
-      >
-        <BlurView intensity={30} tint="dark" style={styles.planCard}>
-          <View style={styles.planHeader}>
-            <View>
-              <Text style={styles.planTitle}>{item.name}</Text>
-              <Text style={styles.planCountry}>{countryName}</Text>
-            </View>
-            <Text style={styles.planPrice}>${displayPrice}</Text>
-          </View>
-
-          <View style={styles.metaRow}>
-            <Text style={styles.planMeta}>{dataAmount}</Text>
-            <Text style={styles.planMetaSeparator}>·</Text>
-            <Text style={styles.planMeta}>{item.duration} {item.durationUnit}s</Text>
-          </View>
-
-          <Text style={styles.planHint}>
-            Speed: {item.speed}
-          </Text>
-
-          <Pressable
-                      style={styles.buyButton}
-                      // 3. Update onPress
-                      onPress={() => {
-                         setSelectedPlan(item);
-                         setModalVisible(true);
-                      }}
-                    >
-                      <Text style={styles.buyText}>Buy Plan</Text>
-                    </Pressable>
-        </BlurView>
-      </LinearGradient>
-    );
-  };
-
-  // Footer component for loader
-  const renderFooter = () => {
-    if (!isLoadingMore) return <View style={{ height: Spacing.xxl }} />;
-    return (
-      <View style={styles.loaderFooter}>
-        <ActivityIndicator size="small" color={Colors.primary} />
-      </View>
-    );
-  };
+  const handleBuy = useCallback((item: any) => {
+    setSelectedPlan(item);
+    setModalVisible(true);
+  }, []);
 
   return (
-    <TouchableWithoutFeedback onPress={() => {
-      Keyboard.dismiss();
-      setShowSuggestions(false);
-    }}>
-      <LinearGradient
-        colors={Gradients.background}
-        style={[styles.container, { paddingTop: insets.top }]}
-      >
-        {/* Header Section */}
+    <LinearGradient colors={Gradients.background} style={[styles.container, { paddingTop: insets.top }]}>
+      <TouchableWithoutFeedback onPress={() => { Keyboard.dismiss(); setShowSuggestions(false); }}>
         <View style={{ zIndex: 10 }}>
           <View style={styles.header}>
             <Text style={styles.title}>Data Plans</Text>
-            <Text style={styles.subtitle}>Find the right plan for your journey</Text>
+            <Text style={styles.subtitle}>Select a high-speed package</Text>
           </View>
 
-          {/* Search Bar */}
           <View style={styles.searchWrapper}>
-            <BlurView intensity={40} tint="dark" style={styles.searchBlur}>
+            <BlurView intensity={20} tint="dark" style={styles.searchBlur}>
               <TextInput
-                placeholder="Search country or region"
-                placeholderTextColor={Colors?.textMuted || '#666'}
+                placeholder="Search country..."
+                placeholderTextColor="#64748B"
                 style={styles.searchInput}
                 value={searchQuery}
                 onFocus={() => setShowSuggestions(true)}
-                onChangeText={(text) => {
-                  setSearchQuery(text);
-                  setShowSuggestions(true);
-                }}
+                onChangeText={setSearchQuery}
               />
             </BlurView>
-
-            {/* --- AUTOCOMPLETE DROPDOWN --- */}
-            {showSuggestions && suggestions.length > 0 && (
-              <View style={styles.suggestionsContainer}>
-                {suggestions.map((item, index) => (
-                  <Pressable
-                    key={index}
-                    style={styles.suggestionItem}
-                    onPress={() => handleSelectSuggestion(item)}
-                  >
-                    <Text style={styles.suggestionText}>{item}</Text>
-                  </Pressable>
-                ))}
-              </View>
-            )}
           </View>
 
-          {/* Region Selector */}
           {!searchQuery && (
-            <View>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.regionScroll}
-                keyboardShouldPersistTaps="handled"
-              >
-                {REGIONS.map((region) => {
-                  const isActive = region === activeRegion;
-                  return (
-                    <Pressable
-                      key={region}
-                      onPress={() => setActiveRegion(region)}
-                    >
-                      <LinearGradient
-                        colors={isActive ? Gradients.primaryGlow : ['rgba(255,255,255,0.06)', 'rgba(255,255,255,0.04)']}
-                        style={styles.regionOuter}
-                      >
-                        <BlurView intensity={25} tint="dark" style={styles.regionChip}>
-                          <Text style={[styles.regionText, isActive && { color: Colors?.textPrimary || '#fff' }]}>
-                            {region}
-                          </Text>
-                        </BlurView>
-                      </LinearGradient>
-                    </Pressable>
-                  );
-                })}
-              </ScrollView>
-            </View>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.regionScroll}>
+              {REGIONS.map((region) => (
+                <Pressable key={region} onPress={() => setActiveRegion(region)} style={styles.regionOuter}>
+                   <View style={[styles.regionChip, activeRegion === region && styles.activeChip]}>
+                      <Text style={[styles.regionText, activeRegion === region && { color: '#000' }]}>{region}</Text>
+                   </View>
+                </Pressable>
+              ))}
+            </ScrollView>
           )}
         </View>
+      </TouchableWithoutFeedback>
 
-        {/* Plans List */}
-        <FlatList
-          data={displayedPlans} // Uses the sliced data
-          renderItem={renderPlanItem}
-          keyExtractor={(item) => item.packageCode}
-          contentContainerStyle={styles.plans}
-          showsVerticalScrollIndicator={false}
-          keyboardDismissMode="on-drag"
-          keyboardShouldPersistTaps="handled"
+      <FlatList
+        data={displayedPlans}
+        renderItem={({ item }) => <PlanItem item={item} onBuy={handleBuy} />}
+        keyExtractor={(item) => item.packageCode}
+        contentContainerStyle={styles.plans}
+        onEndReached={handleLoadMore}
+        onEndReachedThreshold={0.5}
+        removeClippedSubviews={true}
+        maxToRenderPerBatch={5}
+        initialNumToRender={8}
+        windowSize={5}
+      />
 
-          // INFINITE SCROLL PROPS
-          onEndReached={handleLoadMore}
-          onEndReachedThreshold={0.5} // Trigger when user scrolls to within 50% of the bottom
-          ListFooterComponent={renderFooter}
-
-          initialNumToRender={10}
-          maxToRenderPerBatch={10}
-          windowSize={5}
-          ListEmptyComponent={
-            <Text style={styles.emptyText}>No plans found for "{searchQuery}"</Text>
-          }
-        />
-         <PurchaseModal
-                 visible={isModalVisible}
-                 plan={selectedPlan}
-                 onClose={() => setModalVisible(false)}
-              />
-
-
-      </LinearGradient>
-    </TouchableWithoutFeedback>
+      <PurchaseModal visible={isModalVisible} plan={selectedPlan} onClose={() => setModalVisible(false)} />
+    </LinearGradient>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
   header: { padding: Spacing.lg },
-  title: { color: Colors?.textPrimary || '#fff', ...Typography.h1 },
-  subtitle: { color: Colors?.textSecondary || '#aaa', ...Typography.body, marginTop: Spacing.xs },
+  title: { color: '#FFF', fontSize: 28, fontWeight: '800' },
+  subtitle: { color: '#94A3B8', fontSize: 14, marginTop: 4 },
 
-  /* Search */
-  searchWrapper: { paddingHorizontal: Spacing.lg, marginBottom: Spacing.md, position: 'relative', zIndex: 20 },
-  searchBlur: { borderRadius: 16, overflow: 'hidden' },
-  searchInput: { paddingVertical: Spacing.sm, paddingHorizontal: Spacing.md, color: Colors?.textPrimary || '#fff', fontSize: 14, height: 44 },
+  /* Search & Region */
+  searchWrapper: { paddingHorizontal: Spacing.lg, marginBottom: 16 },
+  searchBlur: { borderRadius: 16, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', backgroundColor: 'rgba(0,0,0,0.3)' },
+  searchInput: { padding: 14, color: '#FFF', fontSize: 16 },
+  regionScroll: { paddingHorizontal: Spacing.lg, paddingBottom: 16 },
+  regionOuter: { marginRight: 8 },
+  regionChip: { paddingHorizontal: 18, paddingVertical: 8, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.05)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
+  activeChip: { backgroundColor: '#00E5FF', borderColor: '#00E5FF' },
+  regionText: { color: '#94A3B8', fontWeight: '700', fontSize: 12 },
 
-  /* Autocomplete Suggestions */
-  suggestionsContainer: {
-    position: 'absolute',
-    top: 50,
-    left: Spacing.lg,
-    right: Spacing.lg,
-    backgroundColor: Colors?.surface || '#1A1A1A',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
-    zIndex: 100,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4.65,
-    elevation: 8,
-    overflow: 'hidden'
+  plans: { paddingHorizontal: Spacing.lg, paddingBottom: 100 },
+
+  /* --- NEW CARD STYLES --- */
+  cardContainer: { marginBottom: 16 },
+  cardBorder: { borderRadius: 24, padding: 1 }, // Creates gradient border
+  cardContent: { borderRadius: 24, padding: 20, backgroundColor: 'rgba(15, 23, 42, 0.6)' },
+
+  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+  titleGroup: { flex: 1, paddingRight: 10 },
+  planTitle: { color: '#FFF', fontSize: 18, fontWeight: '700', marginBottom: 6 },
+
+  regionBadge: {
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(47, 102, 246, 0.15)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6
   },
-  suggestionItem: {
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.05)'
-  },
-  suggestionText: {
-    color: Colors?.textPrimary || '#fff',
-    fontSize: 14
-  },
+  regionText: { color: '#2F66F6', fontSize: 10, fontWeight: '800', letterSpacing: 0.5 },
 
-  /* Regions */
-  regionScroll: { paddingHorizontal: Spacing.lg, paddingBottom: Spacing.md },
-  regionOuter: { borderRadius: 20, marginRight: Spacing.sm, padding: 1 },
-  regionChip: { paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm, borderRadius: 20 },
-  regionText: { color: Colors?.textSecondary || '#aaa', fontSize: 14, fontWeight: '500' },
+  priceGroup: { flexDirection: 'row', alignItems: 'flex-start' },
+  currency: { color: '#00E5FF', fontSize: 14, fontWeight: '600', marginTop: 4, marginRight: 2 },
+  price: { color: '#FFF', fontSize: 24, fontWeight: '800' },
 
-  /* Plans List */
-  plans: { paddingHorizontal: Spacing.lg, paddingBottom: Spacing.xxl },
-  planGlow: { borderRadius: 22, marginBottom: Spacing.lg, padding: 1 },
-  planCard: { borderRadius: 22, padding: Spacing.lg, overflow: 'hidden' },
+  divider: { height: 1, backgroundColor: 'rgba(255,255,255,0.08)', marginVertical: 16 },
 
-  planHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
-  planTitle: { color: Colors?.textPrimary || '#fff', fontSize: 16, fontWeight: '600' },
-  planCountry: { color: Colors?.textMuted || '#666', fontSize: 13, marginTop: 2 },
+  detailsRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  detailItem: { alignItems: 'center', flex: 1 },
+  detailLabel: { color: '#64748B', fontSize: 10, fontWeight: '700', marginBottom: 4 },
+  detailValue: { color: '#E2E8F0', fontSize: 14, fontWeight: '600' },
+  verticalLine: { width: 1, height: 24, backgroundColor: 'rgba(255,255,255,0.1)' },
 
-  planPrice: { color: Colors?.textPrimary || '#fff', fontSize: 18, fontWeight: '700' },
-
-  metaRow: { flexDirection: 'row', marginTop: Spacing.sm },
-  planMeta: { color: Colors?.textSecondary || '#ccc', fontSize: 14, fontWeight: '500' },
-  planMetaSeparator: { color: Colors?.textMuted || '#666', marginHorizontal: 6 },
-
-  planHint: { color: Colors?.textMuted || '#666', fontSize: 12, marginTop: Spacing.sm },
-
-  buyButton: {
-    backgroundColor: Colors?.primary || '#2F66F6',
-    marginTop: Spacing.md,
-    borderRadius: 14,
-    paddingVertical: 10,
-    alignItems: 'center'
-  },
-  buyText: { color: '#FFFFFF', fontWeight: '600', fontSize: 15 },
-
-  emptyText: { color: Colors?.textMuted || '#666', textAlign: 'center', marginTop: 40 },
-
-  /* Footer Loader */
-  loaderFooter: {
-    paddingVertical: Spacing.lg,
-    alignItems: 'center',
-    justifyContent: 'center'
-  }
+  buyButton: { marginTop: 20, borderRadius: 14, overflow: 'hidden' },
+  buyGradient: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', paddingVertical: 14 },
+  buyText: { color: '#FFF', fontSize: 14, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 1 },
+  arrow: { color: '#FFF', marginLeft: 8, fontSize: 16, fontWeight: '800' }
 });

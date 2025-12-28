@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react';
+import 'react-native-get-random-values';
 import {
   View,
   TouchableOpacity,
@@ -42,7 +43,7 @@ export function ConnectButton() {
       {/* Login button - clean minimal design with Phantom ghost */}
       <TouchableOpacity
         style={styles.button}
-        //onPress={() => modal.open()}
+        onPress={() => modal.open()}
         activeOpacity={0.85}
       >
         <Image source={PhantomGhost} style={styles.ghost} resizeMode="contain" />

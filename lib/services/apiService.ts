@@ -97,7 +97,7 @@ refreshAuth: async (refreshToken: string) => {
 
 cancelEsimProfile: async (payload: {
   esimTranNo: string
-  idempotencyKey: string
+  iccid: string
 }) => {
   return instance.post(
     '/api/esimAccess/cancelProfile',

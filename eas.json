@@ -1,0 +1,42 @@
+{
+  "cli": {
+    "version": ">= 16.28.0",
+    "appVersionSource": "remote"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_PHANTOM_APP_ID": "32705db7-993b-4207-94c4-a4bc27868f5c",
+        "EXPO_PUBLIC_APP_SCHEME": "phantomwallet",
+        "EXPO_PUBLIC_SOLANA_RPC_URL": "https://api.mainnet-beta.solana.com",
+        "EXPO_PUBLIC_API_BASE_URL": "https://gesimbackend.onrender.com"
+      }
+    },
+    "preview": {
+      "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_PHANTOM_APP_ID": "32705db7-993b-4207-94c4-a4bc27868f5c",
+        "EXPO_PUBLIC_APP_SCHEME": "phantomwallet",
+        "EXPO_PUBLIC_SOLANA_RPC_URL": "https://api.mainnet-beta.solana.com",
+        "EXPO_PUBLIC_API_BASE_URL": "https://gesimbackend.onrender.com"
+      },
+      "android": {
+        "buildType": "apk"
+      }
+    },
+    "production": {
+      "autoIncrement": true,
+      "env": {
+        "EXPO_PUBLIC_PHANTOM_APP_ID": "32705db7-993b-4207-94c4-a4bc27868f5c",
+        "EXPO_PUBLIC_APP_SCHEME": "phantomwallet",
+        "EXPO_PUBLIC_SOLANA_RPC_URL": "https://api.mainnet-beta.solana.com",
+        "EXPO_PUBLIC_API_BASE_URL": "https://gesimbackend.onrender.com"
+      }
+    }
+  },
+  "submit": {
+    "production": {}
+  }
+}
