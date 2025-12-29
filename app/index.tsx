@@ -1,3 +1,9 @@
+import 'react-native-get-random-values'
+import { Buffer } from 'buffer';
+
+// 2. Manually polyfill global variables
+  global.Buffer = Buffer;
+
 import { ActivityIndicator, View ,StyleSheet} from 'react-native'
 import { Redirect } from 'expo-router'
 import { useSession } from '@/lib/session/SessionContext'

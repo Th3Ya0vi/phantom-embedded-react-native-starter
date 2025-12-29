@@ -1,7 +1,8 @@
+// components/modals/SendModal.tsx
+
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, Modal, TextInput, Pressable, ActivityIndicator } from 'react-native';
 import { BlurView } from 'expo-blur';
-import { Colors, Spacing } from '@/lib/theme';
 
 export type Token = 'SOL' | 'USDC';
 
@@ -90,7 +91,7 @@ export function SendModal({ visible, onClose, onSend, solBalance, usdcBalance }:
             {isSending ? (
               <ActivityIndicator color="#FFF" />
             ) : (
-              <Text style={styles.sendButtonText}>Send</Text>
+              <Text style={styles.sendButtonText}>Send Transaction</Text>
             )}
           </Pressable>
 

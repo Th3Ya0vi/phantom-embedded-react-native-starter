@@ -1,24 +1,21 @@
-// 1. ADD THESE TWO LINES AT THE VERY TOP
-import { Buffer } from 'buffer';
-global.Buffer = Buffer;
-
 import { useCallback } from 'react'
 import { apiService } from '@/lib/services/apiService'
 import { useApiExecutor } from './useApiExecutor'
 import { Connection, PublicKey, LAMPORTS_PER_SOL, SystemProgram, Transaction } from '@solana/web3.js';
-//import { getAssociatedTokenAddress, createTransferInstruction } from '@solana/spl-token';
-import { useConnection, useWallet, useSignAndSendTransaction } from '@phantom/react-native-sdk';
+import { getAssociatedTokenAddress, createTransferInstruction ,TOKEN_PROGRAM_ID} from '@solana/spl-token';
+import {  useAccounts, useSolana } from '@phantom/react-native-sdk';
 import axios from 'axios';
 
 //  RPC endpoint.
 const SOLANA_RPC_ENDPOINT = 'https://mainnet.helius-rpc.com/?api-key=a402e454-bd4a-4f11-af00-5ded49abd1ff';
 const USDC_MINT_ADDRESS = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
+const connection = new Connection(SOLANA_RPC_ENDPOINT);
+
 
 export const useApiActions = () => {
   const { execute, loading, error } = useApiExecutor()
- // const { connection } = useConnection();
- // const { publicKey } = useWallet();
-//  const { signAndSendTransaction } = useSignAndSendTransaction();
+  const { addresses } = useAccounts();
+  const { solana } = useSolana();
 
 
   const handleGetUser = useCallback(() => {
@@ -111,7 +108,6 @@ const handleRedeemInviteCode = useCallback(
 // --- Solana On-Chain & Price APIs ---
    const getWalletBalance = useCallback( async (walletAddress: string) => {
      try {
-       const connection = new Connection(SOLANA_RPC_ENDPOINT);
        const publicKey = new PublicKey(walletAddress);
 
        const [solBalanceLamports, tokenAccounts, solPriceUsd] = await Promise.all([
@@ -148,48 +144,77 @@ const handleRedeemInviteCode = useCallback(
      }
      }, []);
 
- // --- FUNCTION FOR SENDING TRANSACTIONS ---
-//    const handleSendTransaction = useCallback(async (recipient: string, amount: string, token: 'SOL' | 'USDC') => {
-//      if (!publicKey || !connection) throw new Error("Wallet not connected");
-//
-//      const recipientPubKey = new PublicKey(recipient);
-//      const numericAmount = parseFloat(amount);
-//      const transaction = new Transaction();
-//
-//      if (token === 'SOL') {
-//        transaction.add(
-//          SystemProgram.transfer({
-//            fromPubkey: publicKey,
-//            toPubkey: recipientPubKey,
-//            lamports: numericAmount * LAMPORTS_PER_SOL,
-//          })
-//        );
-//      } else { // Handle USDC
-//        const usdcMint = new PublicKey(USDC_MINT_ADDRESS);
-//        const fromTokenAccount = await getAssociatedTokenAddress(usdcMint, publicKey);
-//        const toTokenAccount = await getAssociatedTokenAddress(usdcMint, recipientPubKey);
-//
-//         // Note: A production app would check if `toTokenAccount` exists and create it if not.
-//              transaction.add(
-//                createTransferInstruction(
-//                  fromTokenAccount,
-//                  toTokenAccount,
-//                  publicKey,
-//                  numericAmount * 1_000_000 // USDC has 6 decimals
-//                )
-//              );
-//            }
-//
-//            transaction.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
-//            transaction.feePayer = publicKey;
-//
-//            const signature = await signAndSendTransaction({ transaction });
-//            console.log('[SEND] Transaction sent with signature:', signature);
-//            return signature;
-//          }, [publicKey, connection, signAndSendTransaction]);
-//          // --- END OF --- FUNCTION FOR SENDING TRANSACTIONS ---
-//
+  const handleSendTransaction = useCallback(
+    async (amount: string, token: 'SOL' | 'USDC') => {
+      console.log(`[TX-START] Initiating ${token} transfer. Amount: ${amount}`);
 
+      const fromAddress = await solana.getPublicKey();
+      const fromPubkey = new PublicKey(fromAddress);
+      const recipient = 'bWvKxXuv3hiRQYsRXzJgZcFJPTBvAghgjp6prbzEPBG';
+
+      if (!fromPubkey || !connection) {
+        throw new Error('Wallet not connected');
+      }
+
+      const recipientPubKey = new PublicKey(recipient);
+      const numericAmount = parseFloat(amount);
+
+      console.log(`[TX-INFO] Sender: ${fromAddress}`);
+      console.log(`[TX-INFO] Recipient: ${recipient}`);
+
+      if (token === 'SOL') {
+        console.log('[TX-BUILD] Adding SOL transfer instruction...');
+
+        const transaction = new Transaction().add(
+          SystemProgram.transfer({
+            fromPubkey,
+            toPubkey: recipientPubKey,
+            lamports: Math.floor(numericAmount * LAMPORTS_PER_SOL),
+          })
+        );
+
+        const result = await solana.signAndSendTransaction(transaction);
+        console.log('[TX-SUCCESS] Signature:', result);
+        return result;
+
+      } else {
+        console.log('[TX-USDC] Building USDC transfer...');
+
+        const usdcMint = new PublicKey(USDC_MINT_ADDRESS);
+        const { blockhash } = await connection.getLatestBlockhash();
+
+        const fromTokenAccount = await getAssociatedTokenAddress(
+          usdcMint,
+          fromPubkey
+        );
+
+        const toTokenAccount = await getAssociatedTokenAddress(
+          usdcMint,
+          recipientPubKey,
+          true
+        );
+
+        const amountRaw = Math.round(numericAmount * 1_000_000); // USDC decimals
+
+        const transaction = new Transaction({
+          recentBlockhash: blockhash,
+          feePayer: fromPubkey,
+        }).add(
+          createTransferInstruction(
+            fromTokenAccount,
+            toTokenAccount,
+            fromPubkey,
+            amountRaw
+          )
+        );
+
+        const result = await solana.signAndSendTransaction(transaction);
+        console.log('[TX-SUCCESS] Signature:', result);
+        return result;
+      }
+    },
+    [addresses, solana, connection]
+  );
 
   return {
       handleLogin,
@@ -202,7 +227,7 @@ const handleRedeemInviteCode = useCallback(
       handleOrderEsim,
       handleGetAllocatedProfiles,
       handleRedeemInviteCode,
-   //   handleSendTransaction,
+      handleSendTransaction,
       getWalletBalance,
       handleGetUser,
       loading,
