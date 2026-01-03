@@ -164,7 +164,13 @@ export default function PlansScreen() {
           </View>
 
           {!searchQuery && (
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.regionScroll}>
+             <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.regionScroll}
+                // ✅ PROP IS NOW CORRECTLY PLACED
+                removeClippedSubviews={false}
+              >
               {REGIONS.map((region) => (
                 <Pressable key={region} onPress={() => setActiveRegion(region)} style={styles.regionOuter}>
                    <View style={[styles.regionChip, activeRegion === region && styles.activeChip]}>

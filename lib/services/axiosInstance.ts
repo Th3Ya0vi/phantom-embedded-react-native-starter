@@ -1,5 +1,10 @@
-import axios from 'axios'
+import axios, { AxiosError } from 'axios'; // ✅ Import the AxiosError class
 import { storage } from '@/lib/storage/storage'
+declare module 'axios' {
+  export interface AxiosRequestConfig {
+    isPublic?: boolean;
+  }
+}
 
 // 1. Correctly initialize the queue variables
 let isRefreshing = false
@@ -28,6 +33,15 @@ const instance = axios.create({
 // 2. REQUEST INTERCEPTOR: Attach Token
 instance.interceptors.request.use(
   async (config) => {
+
+      console.log(`[AXIOS] Intercepting ${config.method?.toUpperCase()} request to: ${config.url}`);
+
+          // 1. Check if the route is explicitly marked as public
+          if (config.isPublic) {
+            console.log(`[AXIOS] Public route. Sending without token.`);
+            return config; // Let the request proceed immediately
+          }
+
     try {
       const token = await storage.getAccessToken();
       console.log(`[AXIOS] Sending ${config.method?.toUpperCase()} request to: ${config.url}`);
@@ -35,13 +49,17 @@ instance.interceptors.request.use(
       if (token) {
         config.headers.Authorization = `Bearer ${token}`;
         console.log(`[AXIOS] Authorization Header attached successfully.`);
+        return config;
       } else {
-        console.warn(`[AXIOS] No token found! Sending request without Authorization header.`);
-      }
+         console.error(`[AXIOS-REJECT] No token found for protected route: ${config.url}. Cancelling request.`);
+         // This creates a custom, identifiable error that can be caught by the calling function.
+         return Promise.reject(new AxiosError("No authentication token available.", "NO_TOKEN"));
+            }
     } catch (e) {
       console.error('[AXIOS] Interceptor Error', e);
+       return Promise.reject(e);
     }
-    return config;
+
   },
   (error) => Promise.reject(error)
 );

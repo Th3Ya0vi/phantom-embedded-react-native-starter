@@ -1,63 +1,62 @@
 import { useState, useCallback } from 'react';
 import { useApiActions } from './useApiActions';
-import { randomUUID } from 'expo-crypto'; // For creating idempotencyKey
 import { useSession } from '@/lib/session/SessionContext';
 
 // --- TYPE DEFINITIONS ---
-
-// The final success data we need to show the user
 export interface EsimProfile {
   qrCodeUrl: string;
-  ac: string; // The LPA string
+  ac: string;
   iccid: string;
 }
 
-// Status to track the purchase flow
-export type PurchaseStatus =
-  | 'idle'          // Not started
-  | 'ordering'      // Calling the first API
-  | 'provisioning'  // Polling for the second API
-  | 'success'       // All done
-  | 'error';        // Something failed
+export type PurchaseStatus = 'idle' | 'ordering' | 'provisioning' | 'success' | 'error';
 
 // --- THE CUSTOM HOOK ---
-
 export const useEsimPurchase = () => {
   const [status, setStatus] = useState<PurchaseStatus>('idle');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [profile, setProfile] = useState<EsimProfile | null>(null);
-    const { user } = useSession();
-
-
-  // We get the actual API-calling functions from another hook (good practice)
+  const { user } = useSession();
   const { handleOrderEsim, handleGetAllocatedProfiles } = useApiActions();
 
   /**
    * Recursive function to poll the getProfiles endpoint.
-   * It will try 10 times, waiting 3 seconds between each attempt.
    */
   const pollForProfile = useCallback(async (orderNo: string, attempt = 1) => {
-      const userId = user?.id || user?._id;
-    if (attempt > 5) { // Max retries reached
+    const userId = user?.id || user?._id;
+    if (!userId) {
       setStatus('error');
-      setErrorMessage('Provisioning is taking longer than expected. Please check your profile later eSIM will be delivered shortly.');
+      setErrorMessage("Session invalid. Please log in again.");
+      return;
+    }
+
+    if (attempt > 5) { // Max retries
+      setStatus('error');
+      setErrorMessage('Provisioning is taking longer than expected. Please check your profile later.');
       return;
     }
 
     try {
-      console.log(`[POLL] Attempt ${attempt} for Order: ${orderNo}`);
-      const payload = {userId, orderNo, pager: { pageNum: 1, pageSize: 6 } };
-      console.log(`[ pollForProfile ] Starting eSIM provisioning orderNo: ${orderNo}`,JSON.stringify(payload, null, 2));
+      console.log(`[POLL] Attempt #${attempt} for Order: ${orderNo}`);
+
+      // ✅ CORRECTED: Convert userId to a Number for the payload
+      const payload = {
+        userId: Number(userId),
+        orderNo,
+        pager: { pageNum: 1, pageSize: 6 }
+      };
+
+      console.log("[POLL] Sending Request:", JSON.stringify(payload, null, 2));
       const response = await handleGetAllocatedProfiles(payload);
+      console.log("[POLL] Received Response:", JSON.stringify(response, null, 2));
 
-      // Navigate through the nested response to find the esim data
+      // Navigate the nested response to find the eSIM data
       const esim = response?.data?.obj?.esimList?.[0];
+      console.log(`[POLL] Found eSIM with status:`, esim?.smdpStatus || 'PENDING');
 
-      console.log(`[POLL] Status Check:`, esim?.smdpStatus || 'PENDING');
-
-      // The profile is ready when its status is 'RELEASED'
+      // Check if the profile is ready
       if (esim && esim.smdpStatus === 'RELEASED') {
-      console.log(`[POLL] ✅ Success! Profile Released.`);
+        console.log(`[POLL] ✅ Success! Profile is released.`);
         setStatus('success');
         setProfile({
           qrCodeUrl: esim.qrCodeUrl,
@@ -65,27 +64,27 @@ export const useEsimPurchase = () => {
           iccid: esim.iccid,
         });
       } else {
-        // If not ready, wait 3 seconds and then call this function again
+        // If not ready, wait 3 seconds and try again
         setTimeout(() => pollForProfile(orderNo, attempt + 1), 3000);
       }
     } catch (e: any) {
       setStatus('error');
       setErrorMessage(e.message || 'Failed to fetch eSIM profile.');
     }
-  }, [handleGetAllocatedProfiles]);
-
+    // ✅ FIX: Added `user` to the dependency array because it's used inside
+  }, [handleGetAllocatedProfiles, user]);
 
   /**
-   * Main function to be called from the UI. It orchestrates the entire purchase.
+   * Main function to orchestrate the entire purchase flow.
    */
   const purchaseEsim = useCallback(async (plan: any) => {
-        console.log(`[FLOW] 1. Purchase Initiated for: ${plan.name} (${plan.packageCode})`);
+    console.log(`[FLOW] Purchase initiated for: ${plan.packageCode}`);
     setStatus('ordering');
     setErrorMessage(null);
     setProfile(null);
 
     try {
-      // Step 1: Order the eSIM
+      // Step 1: Order the eSIM to get an order number
       const orderPayload = {
         amount: plan.price,
         packageInfoList: [{
@@ -94,36 +93,30 @@ export const useEsimPurchase = () => {
           price: plan.price,
         }],
       };
-      console.log(`[FLOW] 2. Calling Order API with Payload:`, JSON.stringify(orderPayload, null, 2));
-
       const orderResponse = await handleOrderEsim(orderPayload);
-      console.log(`[FLOW] 3. Order API Success! OrderNo: ${orderResponse?.data?.obj?.orderNo}`);
+      const orderNo = orderResponse?.data?.obj?.orderNo;
 
-      // Validate the response from the first API call
-      if (!orderResponse.success || !orderResponse.data.obj.orderNo) {
-        throw new Error(orderResponse.errorMsg || 'Failed to place eSIM order.');
+      if (!orderNo) {
+        throw new Error('Order number was not returned from the server.');
       }
 
-      // Step 2: Update status and start polling for the profile
+      // Step 2: Start polling for the provisioned profile
+      console.log(`[FLOW] Order placed. Now provisioning for OrderNo: ${orderNo}`);
       setStatus('provisioning');
-      const  orderNo  = orderResponse.data.obj.orderNo;
-            console.log(`[ pollForProfile ] Provisioning STep Started for OrderNo: ${orderNo}`);
-
       pollForProfile(orderNo);
 
     } catch (e: any) {
-      console.error(`[FLOW ERROR] Purchase Step Failed:`, e.message);
+      console.error(`[FLOW] Purchase failed during 'ordering' step:`, e.message);
       setStatus('error');
-      setErrorMessage(e.message || 'An unknown error occurred during purchase.');
+      setErrorMessage(e.message || 'The purchase could not be completed.');
     }
   }, [handleOrderEsim, pollForProfile]);
 
-const resetStatus = useCallback(() => {
+  const resetStatus = useCallback(() => {
     setStatus('idle');
     setProfile(null);
     setErrorMessage(null);
   }, []);
 
-
-  return { status, errorMessage, profile, purchaseEsim ,resetStatus};
+  return { status, errorMessage, profile, purchaseEsim, resetStatus };
 };

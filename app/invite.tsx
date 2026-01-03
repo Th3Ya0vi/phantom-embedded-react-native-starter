@@ -1,102 +1,160 @@
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Text,
   TextInput,
   Pressable,
   ActivityIndicator,
-  View,StyleSheet,
+  View,
+  StyleSheet,
   KeyboardAvoidingView,
   Platform,
   TouchableWithoutFeedback,
   Keyboard,
-  Dimensions
+  Dimensions,
+  ScrollView,
+  RefreshControl,
+  Alert,
+  AppState,
 } from 'react-native';
-import { useAccounts, useModal, AddressType } from '@phantom/react-native-sdk';
-import { Colors as ThemeColors, Spacing as ThemeSpacing, Typography } from '@/lib/theme';
-import { useState, useEffect } from 'react';
-import { router ,Stack} from 'expo-router';
+import * as Linking from 'expo-linking';
+import { useAccounts, AddressType } from '@phantom/react-native-sdk';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { router, Stack, useFocusEffect } from 'expo-router'; // ✅ Added useFocusEffect
+import { Colors as ThemeColors, Spacing as ThemeSpacing } from '@/lib/theme';
 import { useAuthActions } from '@/hooks/useAuthActions';
 import { useInviteActions } from '@/hooks/useInviteActions';
+import { useSession } from '@/lib/session/SessionContext';
 
 const { width } = Dimensions.get('window');
 
-// Fallback Gradients if not yet in theme
+const log = (tag: string, data?: any) => {
+  const ts = new Date().toISOString().split('T')[1];
+  console.log(`[${ts}] ${tag}`, data ?? '');
+};
+
 const Gradients = {
-  background: ['#1a1a2e', '#16213e', '#0f3460'] as const, // Deep Midnight Blue
+  background: ['#1a1a2e', '#16213e', '#0f3460'] as const,
   card: ['rgba(255,255,255,0.05)', 'rgba(255,255,255,0.01)'] as const,
 };
 
-const Colors = ThemeColors || {
-  primary: '#2F66F6',
-  error: '#FF4B4B',
-  textSecondary: '#A0A0A0',
-  textMuted: '#666666',
-  // add other defaults if needed
-};
-
-const Spacing = ThemeSpacing || {
-  xl: 32, sm: 8, lg: 24, md: 16
-};
+const Colors = ThemeColors || { primary: '#2F66F6', error: '#FF4B4B', textSecondary: '#A0A0A0' };
+const Spacing = ThemeSpacing || { xl: 32, sm: 8, lg: 24, md: 16 };
+const STATUS_COLORS = { success: '#22c55e', processing: '#F59E0B', error: '#FF4B4B' };
 
 export default function InviteScreen() {
+
   const insets = useSafeAreaInsets();
 
-  // State
   const [code, setCode] = useState('');
   const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Hooks
+  // ✅ GET THE FULL USER OBJECT
+  const { isHydrated, isAuthenticated, user } = useSession();
   const { addresses, isConnected } = useAccounts();
-  const solanaAccount = addresses?.find(addr => addr.addressType === AddressType.solana);
-  const modal = useModal();
   const { loginWithWallet } = useAuthActions();
   const { redeemInvite } = useInviteActions();
 
-  // Close modal automatically if open
-  useEffect(() => {
-    if (isConnected && modal.isOpened) {
-      const timer = setTimeout(() => modal.close(), 500);
-      return () => clearTimeout(timer);
+  const solanaAccount = addresses?.find((addr) => addr.addressType === AddressType.solana);
+  const walletAddress = solanaAccount?.address;
+
+  /* ------------------------------------------------------------------ */
+  /* LOGIN & REDIRECT LOGIC                                             */
+  /* ------------------------------------------------------------------ */
+  const checkSessionAndRedirect = useCallback(async () => {
+    log('REDIRECT_CHECK_START', {
+      isHydrated,
+      isAuthenticated,
+      inviteClaimed: user?.inviteClaimed,
+      isConnected,
+      hasAddress: !!walletAddress
+    });
+
+    // ✅ THE CRITICAL FIX: Only redirect if the user object exists AND inviteClaimed is true.
+    if (isHydrated && isAuthenticated) {
+        if(user?.inviteClaimed){
+      log('REDIRECTING: User session is valid and invite is already claimed.',user?.inviteClaimed);
+      router.replace('/(tabs)');
+      return;
+      }else {
+   log('REDIRECTING FAILED: User session is valid and invite not claimed.',user.inviteClaimed);
+
+          return ;}
     }
-  }, []);
 
-  // Auto-login logic
-  useEffect(() => {
-    const runLogin = async () => {
-      if (!isConnected || !addresses || addresses.length === 0) return;
+    // If session is valid but invite is NOT claimed, we stay on this page.
+    if (isHydrated && isAuthenticated && !user?.inviteClaimed) {
+        log('STAYING: User is logged in but has not claimed an invite yet.');
+        return;
+    }
 
-      const walletAddress = solanaAccount?.address;
-      if (!walletAddress) return;
-
+    // If not authenticated, but wallet is connected, try to log in.
+    if (isHydrated && !isAuthenticated && isConnected && walletAddress) {
+      log('ATTEMPTING_AUTO_LOGIN', { walletAddress });
+      setLoading(true);
       try {
-        // Only show loading if we are actually checking invites
-        // setLoading(true); // Optional: can keep UI interactive
-
-        const user = await loginWithWallet(walletAddress);
-
-        if (user && user.inviteClaimed) {
+        const loggedInUser = await loginWithWallet(walletAddress);
+       log('User-LOGGED_IN', { inviteClaimed: loggedInUser?.inviteClaimed });
+        // After login, re-check if their new session has inviteClaimed set
+        if (loggedInUser?.inviteClaimed) {
+          log('AUTO_LOGIN_SUCCESS: Invite claimed. Redirecting.');
           router.replace('/(tabs)');
+        } else {
+          log('AUTO_LOGIN_SUCCESS: User can now enter code.');
         }
-      } catch (err) {
-        console.error('Invite login check failed:', err);
+      } catch (err: any) {
+        log('AUTO_LOGIN_ERROR', err.message);
       } finally {
         setLoading(false);
       }
-    };
+    } else {
+        log('WAITING: Prerequisites for auto-login not met.');
+    }
+  }, [isHydrated, isAuthenticated, user, isConnected, walletAddress, loginWithWallet]);
 
-    runLogin();
-  }, [isConnected, addresses, solanaAccount]);
+useEffect(() => {
+    log('STATE_WATCHER_EFFECT', { isAuthenticated, inviteClaimed: user?.inviteClaimed });
 
+    // If the user is authenticated AND their invite status is now 'true', redirect.
+    // This will fire after a successful `redeemInvite` call updates the context.
+    if (isAuthenticated && user?.inviteClaimed) {
+      log('STATE_WATCHER: Invite status is now claimed. Redirecting...');
+      router.replace('/(tabs)');
+    }
+  }, [user, isAuthenticated]);
+
+  /* ------------------------------------------------------------------ */
+  /* REFRESH HANDLERS                                                   */
+  /* ------------------------------------------------------------------ */
+  const onRefresh = useCallback(() => {
+    log('PULL_TO_REFRESH_TRIGGERED');
+    setRefreshing(true);
+    checkSessionAndRedirect().finally(() => setRefreshing(false));
+  }, [checkSessionAndRedirect]);
+
+useFocusEffect(
+  useCallback(() => {
+    checkSessionAndRedirect();
+  }, [checkSessionAndRedirect])
+);
+
+
+
+  /* ------------------------------------------------------------------ */
+  /* REDEEM LOGIC                                                       */
+  /* ------------------------------------------------------------------ */
   const onRedeem = async () => {
-    if (!code) return;
+    if (!code || loading) return;
     setError(null);
     setLoading(true);
     try {
       await redeemInvite(code.trim());
-      router.replace('/(tabs)');
+      // On successful redeem, the user object will update, and the useFocusEffect will handle the redirect.
+      log('REDEEM_SUCCESS: Invite claimed. Awaiting redirect.');
+
     } catch (e: any) {
       setError(e.message || 'Invalid invite code');
     } finally {
@@ -104,285 +162,111 @@ export default function InviteScreen() {
     }
   };
 
+  const statusColor = walletAddress ? STATUS_COLORS.success : STATUS_COLORS.processing;
+
   return (
     <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-      <View style={{ flex: 1 }}>
+        {/* ... (The rest of your JSX remains exactly the same) ... */}
+         <View style={{ flex: 1 }}>
+        <Stack.Screen options={{ headerShown: false }} />
+        <LinearGradient colors={Gradients.background} style={StyleSheet.absoluteFill} />
 
-              <Stack.Screen options={{ headerShown: false }} />
-        {/* 1. Background Gradient */}
-        <LinearGradient
-          colors={Gradients.background}
-          style={StyleSheet.absoluteFill}
-        />
-
-        {/* 2. Decorative Glows */}
-        <View style={[styles.glowCircle, styles.glowTopLeft]} />
-        <View style={[styles.glowCircle, styles.glowBottomRight]} />
-
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          style={[styles.container, { paddingTop: insets.top + 20 }]}
+        <ScrollView
+          contentContainerStyle={{ flexGrow: 1 }}
+          refreshControl={
+            <RefreshControl
+                refreshing={refreshing}
+                onRefresh={onRefresh}
+                tintColor="#FFF"
+                colors={['#2F66F6']}
+            />
+          }
+          alwaysBounceVertical={true}
         >
-          <View style={styles.content}>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            style={[styles.container, { paddingTop: insets.top + 60 }]}
+          >
+            <View style={styles.content}>
+              <View style={styles.headerContainer}>
+                <Text style={styles.title}>You’re Invited</Text>
+                <Text style={styles.subtitle}>Enter your code to access the future of connectivity.</Text>
 
-            {/* Header Section */}
-            <View style={styles.headerContainer}>
-              <Text style={styles.title}>You’re Invited</Text>
-              <Text style={styles.subtitle}>
-                Enter your exclusive code to access the future of connectivity.
-              </Text>
-
-              {/* Connected Wallet Pill */}
-              {solanaAccount?.address ? (
-                <View style={styles.walletPill}>
-                  <View style={styles.activeDot} />
-                  <Text style={styles.walletText}>
-                    Connected: {solanaAccount.address.slice(0, 4)}...{solanaAccount.address.slice(-4)}
+                <View style={[styles.walletPill, { borderColor: statusColor }]}>
+                  <View style={[styles.activeDot, { backgroundColor: statusColor }]} />
+                  <Text style={[styles.walletText, { color: statusColor }]}>
+                    {walletAddress
+                      ? `Connected: ${walletAddress.slice(0, 4)}...${walletAddress.slice(-4)}`
+                      : 'Syncing with Phantom...'}
                   </Text>
+                  <Pressable onPress={onRefresh} style={{ marginLeft: 8 }}>
+                    <Text style={{ fontSize: 14 }}>🔄</Text>
+                  </Pressable>
                 </View>
-              ) : (
-                <View style={[styles.walletPill, { borderColor: Colors.error }]}>
-                   <Text style={[styles.walletText, { color: Colors.error }]}>Wallet not connected</Text>
-                </View>
-              )}
-            </View>
+              </View>
 
-            {/* Glassmorphism Card */}
-            <LinearGradient
-              colors={Gradients.card}
-              style={styles.cardBorder}
-            >
-              <BlurView intensity={30} tint="dark" style={styles.cardBody}>
+              <LinearGradient colors={Gradients.card} style={styles.cardBorder}>
+                <BlurView intensity={30} tint="dark" style={styles.cardBody}>
+                  <Text style={styles.label}>INVITATION CODE</Text>
+                  <TextInput
+                    placeholder="GSM-XX-XXX"
+                    placeholderTextColor="#666"
+                    value={code}
+                    onChangeText={(t) => {
+                      // ✅ This forces every character to uppercase as it's typed
+                      setCode(t.toUpperCase());
+                      setError(null);
+                    }}
+                    autoCapitalize="characters" // Suggests uppercase keyboard to the user
+                    autoCorrect={false}         // Highly recommended for codes to prevent annoying autocorrect
+                    style={[styles.input, error && styles.inputError]}
+                  />
 
-                <Text style={styles.label}>INVITATION CODE</Text>
-
-                <TextInput
-                  placeholder="GSM-XXXX-XXXX"
-                  placeholderTextColor="#666"
-                  value={code}
-                  onChangeText={(text) => {
-                    setCode(text);
-                    setError(null);
-                  }}
-                  autoCapitalize="characters"
-                  autoCorrect={false}
-                  style={[styles.input, error && styles.inputError]}
-                />
-
-                {error && (
-                  <View style={styles.errorContainer}>
-                    <Text style={styles.errorIcon}>⚠️</Text>
-                    <Text style={styles.errorText}>{error}</Text>
-                  </View>
-                )}
-
-                <Pressable
-                  style={({ pressed }) => [
-                    styles.primaryButton,
-                    (!code || loading) && styles.disabledButton,
-                    pressed && styles.pressedButton
-                  ]}
-                  disabled={!code || loading}
-                  onPress={onRedeem}
-                >
-                  {loading ? (
-                    <ActivityIndicator color="#FFF" />
-                  ) : (
-                    <Text style={styles.primaryButtonText}>Verify & Enter</Text>
+                  {error && (
+                    <View style={styles.errorContainer}>
+                      <Text style={styles.errorText}>⚠️ {error}</Text>
+                    </View>
                   )}
-                </Pressable>
 
-              </BlurView>
-            </LinearGradient>
-
-            {/* Footer */}
-            <Pressable
-              style={styles.footerButton}
-              onPress={() => router.push('/request-invite')}
-            >
-              <Text style={styles.footerText}>
-                Don’t have a code? <Text style={styles.linkText}>Request Access</Text>
-              </Text>
-            </Pressable>
-
-          </View>
-        </KeyboardAvoidingView>
+                  <Pressable
+                    style={[styles.primaryButton, (!code || loading) && styles.disabledButton]}
+                    disabled={!code || loading}
+                    onPress={onRedeem}
+                  >
+                    {loading ? <ActivityIndicator color="#FFF" /> : <Text style={styles.primaryButtonText}>Verify & Enter</Text>}
+                  </Pressable>
+                </BlurView>
+              </LinearGradient>
+            </View>
+          </KeyboardAvoidingView>
+        </ScrollView>
       </View>
     </TouchableWithoutFeedback>
   );
 }
-
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  content: {
-    flex: 1,
-    paddingHorizontal: Spacing.xl,
-    justifyContent: 'center',
-  },
-
-  /* Background Elements */
-  glowCircle: {
-    position: 'absolute',
-    width: width * 0.9,
-    height: width * 0.9,
-    borderRadius: width * 0.45,
-    opacity: 0.15,
-  },
-  glowTopLeft: {
-    top: -100,
-    left: -100,
-    backgroundColor: '#6366f1', // Indigo
-  },
-  glowBottomRight: {
-    bottom: -100,
-    right: -100,
-    backgroundColor: Colors?.primary || '#2F66F6', // Blue
-  },
-
-  /* Header */
-  headerContainer: {
-    alignItems: 'center',
-    marginBottom: Spacing.xl,
-  },
-  title: {
-    color: '#FFFFFF',
-    fontSize: 32,
-    fontWeight: '700',
-    letterSpacing: 0.5,
-    marginBottom: Spacing.sm,
-    textAlign: 'center',
-  },
-  subtitle: {
-    color: Colors?.textSecondary || '#A0A0A0',
-    fontSize: 16,
-    lineHeight: 24,
-    textAlign: 'center',
-    marginBottom: Spacing.lg,
-    maxWidth: '85%',
-  },
-
-  /* Wallet Pill */
+  container: { flex: 1 },
+  content: { flex: 1, paddingHorizontal: Spacing.xl, justifyContent: 'center' },
+  headerContainer: { alignItems: 'center', marginBottom: Spacing.xl },
+  title: { color: '#FFFFFF', fontSize: 32, fontWeight: '700', marginBottom: Spacing.sm },
+  subtitle: { color: Colors.textSecondary, fontSize: 16, textAlign: 'center', marginBottom: Spacing.lg },
   walletPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.3)',
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
+    flexDirection: 'row', alignItems: 'center', paddingVertical: 8, paddingHorizontal: 12,
+    borderRadius: 20, borderWidth: 1, backgroundColor: 'rgba(0,0,0,0.3)',
   },
-  activeDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: '#22c55e', // Green
-    marginRight: 8,
-  },
-  walletText: {
-    color: Colors?.textMuted || '#999',
-    fontSize: 12,
-    fontFamily: 'monospace',
-    fontWeight: '500',
-  },
-
-  /* Card */
-  cardBorder: {
-    borderRadius: 24,
-    padding: 1, // Creates the border gradient effect
-    marginBottom: Spacing.xl,
-    overflow: 'hidden',
-  },
-  cardBody: {
-    backgroundColor: 'rgba(20,20,30,0.6)', // Slightly opaque inner
-    padding: Spacing.lg,
-    borderRadius: 24,
-  },
-  label: {
-    color: Colors?.primary || '#2F66F6',
-    fontSize: 12,
-    fontWeight: '700',
-    letterSpacing: 1,
-    marginBottom: Spacing.sm,
-    marginLeft: 4,
-  },
+  activeDot: { width: 6, height: 6, borderRadius: 3, marginRight: 8 },
+  walletText: { fontSize: 12, fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace' },
+  cardBorder: { borderRadius: 24, padding: 1, marginBottom: Spacing.xl },
+  cardBody: { backgroundColor: 'rgba(20,20,30,0.6)', padding: Spacing.lg, borderRadius: 24 },
+  label: { color: Colors.primary, fontSize: 12, fontWeight: '700', marginBottom: Spacing.sm },
   input: {
-    backgroundColor: 'rgba(0,0,0,0.3)',
-    borderRadius: 16,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: 16,
-    color: '#FFFFFF',
-    fontSize: 18,
-    textAlign: 'center',
-    letterSpacing: 2,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
-    marginBottom: Spacing.lg,
+    backgroundColor: 'rgba(0,0,0,0.3)', borderRadius: 16, padding: 16, color: '#FFF',
+    fontSize: 18, textAlign: 'center', marginBottom: Spacing.lg, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)',
   },
-  inputError: {
-    borderColor: '#FF6B6B',
-    backgroundColor: 'rgba(255, 107, 107, 0.05)',
-  },
-
-  /* Error Message */
-  errorContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: Spacing.md,
-    backgroundColor: 'rgba(255, 107, 107, 0.1)',
-    padding: 8,
-    borderRadius: 8,
-  },
-  errorIcon: {
-    fontSize: 12,
-    marginRight: 6,
-  },
-  errorText: {
-    color: '#FF6B6B',
-    fontSize: 13,
-    fontWeight: '500',
-  },
-
-  /* Main Button */
-  primaryButton: {
-    backgroundColor: Colors?.primary || '#2F66F6',
-    borderRadius: 16,
-    paddingVertical: 16,
-    alignItems: 'center',
-    shadowColor: Colors?.primary || '#2F66F6',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 5,
-  },
-  disabledButton: {
-    opacity: 0.5,
-    shadowOpacity: 0,
-  },
-  pressedButton: {
-    transform: [{ scale: 0.98 }],
-  },
-  primaryButtonText: {
-    color: '#FFFFFF',
-    fontWeight: '700',
-    fontSize: 16,
-  },
-
-  /* Footer */
-  footerButton: {
-    alignItems: 'center',
-    padding: Spacing.md,
-  },
-  footerText: {
-    color: Colors?.textSecondary || '#A0A0A0',
-    fontSize: 14,
-  },
-  linkText: {
-    color: '#FFFFFF',
-    fontWeight: '600',
-    textDecorationLine: 'underline',
-  },
+  inputError: { borderColor: '#FF6B6B' },
+  errorContainer: { marginBottom: Spacing.md, padding: 8, borderRadius: 8, backgroundColor: 'rgba(255,107,107,0.1)' },
+  errorText: { color: '#FF6B6B', textAlign: 'center', fontSize: 13 },
+  primaryButton: { backgroundColor: Colors.primary, borderRadius: 16, paddingVertical: 16, alignItems: 'center' },
+  disabledButton: { opacity: 0.5 },
+  primaryButtonText: { color: '#FFFFFF', fontWeight: '700', fontSize: 16 },
 });

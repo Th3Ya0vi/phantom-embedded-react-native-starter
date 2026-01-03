@@ -216,6 +216,90 @@ const handleRedeemInviteCode = useCallback(
     [addresses, solana, connection]
   );
 
+const processEsimPurchase = useCallback(async (
+  plan: any,
+  userId: string,
+  onProgress: (stage: 'PAYING' | 'LOGGING' | 'PROVISIONING' | 'SUCCESS') => void
+) => {
+  console.log("==================== PURCHASE FLOW START ====================");
+
+  try {
+    // --- 1. PAYMENT ---
+    onProgress('PAYING');
+    const dollarAmount = (plan.price / 10000).toString();
+    console.log(`[1/4 PAYMENT] Requesting ${dollarAmount} USDC...`);
+    const signature = await handleSendTransaction(dollarAmount, 'USDC');
+    if (!signature) throw new Error("Payment cancelled or signature missing.");
+    const txHash = typeof signature === 'object' ? signature.signature : signature;
+    console.log(`[1/4 PAYMENT] SUCCESS. Signature: ${txHash}`);
+
+    // --- 2. LOGGING ---
+    onProgress('LOGGING');
+    const transactionData = {
+      userId: Number(userId),
+      amount: Number(plan.price / 10000),
+      tokenUsed: "USDC",
+      txHash: txHash,
+      transactionTypeId: 1,
+      status: "confirmed"
+    };
+    console.log(`[2/4 AXIOS REQUEST] POST to /api/transactions/addTransaction:`, JSON.stringify(transactionData, null, 2));
+    const logRes = await execute(() => apiService.addTransaction(transactionData));
+    console.log(`[2/4 AXIOS RESPONSE] addTransaction:`, JSON.stringify(logRes, null, 2));
+
+    // --- 3. ORDERING ---
+    onProgress('PROVISIONING');
+    const orderPayload = {
+      amount: Number(plan.price),
+      packageInfoList: [{
+        packageCode: plan.packageCode,
+        count: 1,
+        price: Number(plan.price),
+      }],
+    };
+    console.log(`[3/4 AXIOS REQUEST] POST to /api/esimAccess/orderEsim:`, JSON.stringify(orderPayload, null, 2));
+    const orderRes = await execute(() => apiService.orderEsim(orderPayload));
+    console.log(`[3/4 AXIOS RESPONSE] orderEsim:`, JSON.stringify(orderRes, null, 2));
+
+    // --- 4. ALLOCATING ---
+    // Capture the 'orderNo' from the previous step's response
+    const orderNo = orderRes?.data?.obj?.orderNo;
+
+    if (!orderNo) {
+      console.error("[ALLOCATE ERROR] 'orderNo' missing from /orderEsim response");
+      throw new Error("Order successful, but missing the Order Number for profile retrieval.");
+    }
+
+    // ✅ BUILD THE CORRECT PAYLOAD for getAllocatedProfiles
+    const allocPayload = {
+        userId: Number(userId),
+        orderNo: orderNo,
+        pager: { pageNum: 1, pageSize: 6 }
+    };
+    console.log(`[4/4 AXIOS REQUEST] POST to /api/esimAccess/getAllocatedProfiles:`, JSON.stringify(allocPayload, null, 2));
+
+    const allocRes = await execute(() => apiService.getAllocatedProfiles(allocPayload));
+    console.log(`[4/4 AXIOS RESPONSE] getAllocatedProfiles:`, JSON.stringify(allocRes, null, 2));
+
+    // --- 5. FINISH ---
+    onProgress('SUCCESS');
+    console.log("==================== PURCHASE FLOW COMPLETE ====================");
+    return allocRes;
+
+  } catch (error: any) {
+    console.log("-------------------- FLOW FAILED --------------------");
+    if (error.response) {
+      console.error(`[AXIOS ERROR RESPONSE] URL: ${error.config?.url}`);
+      console.error(`[AXIOS ERROR RESPONSE] DATA:`, JSON.stringify(error.response.data, null, 2));
+    } else {
+      console.error(`[FLOW ERROR]: ${error.message}`);
+    }
+    console.log("-----------------------------------------------------");
+    throw error;
+  }
+}, [handleSendTransaction, execute]);
+
+
   return {
       handleLogin,
       handleLogout,
@@ -229,6 +313,7 @@ const handleRedeemInviteCode = useCallback(
       handleRedeemInviteCode,
       handleSendTransaction,
       getWalletBalance,
+      processEsimPurchase,
       handleGetUser,
       loading,
       error,

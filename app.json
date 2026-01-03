@@ -12,6 +12,11 @@
       "resizeMode": "cover",
       "backgroundColor": "#2F66F6"
     },
+    "extra": {
+      "eas": {
+        "projectId": "c391ca2f-7589-4a6b-88aa-83c58eb0c937"
+      }
+  },
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.gesim.phantomwallet",
@@ -25,7 +30,19 @@
         "backgroundColor": "#2F66F6"
       },
       "package": "com.gesim.phantomwallet",
-      "icon": "./assets/default.png"
+      "icon": "./assets/default.png",
+      "launchMode": "singleTask",
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "data": [
+            {
+              "scheme": "phantomwallet"
+            }
+          ],
+          "category": ["BROWSABLE", "DEFAULT"]
+        }
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"

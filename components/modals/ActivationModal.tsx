@@ -14,6 +14,9 @@ interface ActivationModalProps {
 
 export function ActivationModal({ visible, onClose, profile }: ActivationModalProps) {
   if (!profile) return null;
+  const activationCode = profile?.ac || "";
+  const iccid = profile?.iccid || "Not Available";
+
 
   const copyToClipboard = async (text: string) => {
     await Clipboard.setStringAsync(text);
@@ -36,8 +39,15 @@ export function ActivationModal({ visible, onClose, profile }: ActivationModalPr
           <View style={styles.qrWrapper}>
             <View style={styles.qrGlow} />
             <View style={styles.qrBackground}>
-              <QRCode value={profile.ac} size={180} backgroundColor="#FFF" color="#000" />
-            </View>
+
+                {activationCode ? (
+                  <QRCode value={activationCode} size={180} />
+                ) : (
+                  <View style={styles.errorContainer}>
+                    <Text style={styles.errorText}>QR Code not available.</Text>
+                  </View>
+                )}
+              </View>
           </View>
 
           <View style={styles.manualBox}>

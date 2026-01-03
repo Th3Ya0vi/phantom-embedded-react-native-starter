@@ -1,22 +1,17 @@
-import React, { useEffect } from 'react';
-import { View, Text, StyleSheet, Modal, Pressable } from 'react-native';
+import React, { useState, useEffect, useMemo } from 'react';
+import { View, Text, StyleSheet, Modal, Pressable, ActivityIndicator, Alert } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { Colors, Spacing } from '@/lib/theme';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withRepeat,
-  withTiming,
-  Easing
-} from 'react-native-reanimated';
-import { useEsimPurchase } from '@/hooks/useEsimPurchase';
-import { ProcessingModal } from './ProcessingModal';
+import Animated, { useSharedValue, useAnimatedStyle, withRepeat, withTiming, Easing, withSequence } from 'react-native-reanimated';
+import { useAccounts, AddressType } from '@phantom/react-native-sdk';
+
+import { useApiActions } from '@/hooks/useApiActions';
+import { useSession } from '@/lib/session/SessionContext';
 import { ActivationModal } from './ActivationModal';
 
-
-// Define the shape of the Plan object
+// --- TYPE DEFINITIONS ---
 interface Plan {
   packageCode: string;
   name: string;
@@ -33,326 +28,343 @@ interface PurchaseModalProps {
   plan: Plan | null;
 }
 
+// --- SUB-COMPONENT FOR CHECKLIST ---
+const ChecklistItem = ({ label, status }: { label: string, status: 'pending' | 'in-progress' | 'done' }) => {
+    const opacity = useSharedValue(1);
+
+    useEffect(() => {
+      if (status === 'in-progress') {
+        opacity.value = withRepeat(
+          withSequence(withTiming(0.6, { duration: 700 }), withTiming(1, { duration: 700 })),
+          -1,
+          true
+        );
+      } else {
+        opacity.value = withTiming(1);
+      }
+    }, [status]);
+
+    const animatedStyle = useAnimatedStyle(() => ({
+      opacity: status === 'in-progress' ? opacity.value : 1,
+    }));
+
+    return (
+      <Animated.View style={[styles.checklistItem, animatedStyle]}>
+        <Text style={[styles.checklistIcon, status === 'done' && styles.checklistDoneIcon]}>
+          {status === 'done' ? '✓' : '●'}
+        </Text>
+        <Text style={[styles.checklistLabel, status === 'pending' && styles.checklistPendingLabel, status === 'done' && styles.checklistDoneLabel]}>
+          {label}
+        </Text>
+      </Animated.View>
+    );
+};
+
 export function PurchaseModal({ visible, onClose, plan }: PurchaseModalProps) {
   const insets = useSafeAreaInsets();
-  const { status, errorMessage, profile, purchaseEsim ,resetStatus} = useEsimPurchase();
+  const { user } = useSession();
+  const { processEsimPurchase, getWalletBalance } = useApiActions();
+  const { addresses } = useAccounts();
 
-    //  Handle Payment Click
-  const handlePayment = () => {
-    console.log("[UI] 'Pay Now' button clicked.");
-    if (plan) {
-      purchaseEsim(plan);
-    } else {
-      console.error("[UI] Error: No plan data found in PurchaseModal.");
+  // --- STATE ---
+  const [purchaseStep, setPurchaseStep] = useState<'IDLE' | 'PAYING' | 'LOGGING' | 'PROVISIONING' | 'SUCCESS'>('IDLE');
+  const [provisionedProfile, setProvisionedProfile] = useState<any>(null);
+  const [isFetchingBalance, setIsFetchingBalance] = useState(true);
+  const [walletData, setWalletData] = useState({ solBalance: 0, usdcBalance: 0, solValueUsd: 0 });
+
+  const rotation = useSharedValue(0);
+
+  // --- FETCH BALANCES ---
+  useEffect(() => {
+    const loadBalances = async () => {
+      if (visible && addresses) {
+        setIsFetchingBalance(true);
+        const solAccount = addresses.find(a => a.addressType === AddressType.solana);
+        if (solAccount) {
+          const data = await getWalletBalance(solAccount.address);
+          setWalletData({
+            solBalance: data.solBalance || 0,
+            usdcBalance: data.usdcBalance || 0,
+            solValueUsd: data.solValue || 0
+          });
+        }
+        setIsFetchingBalance(false);
+      }
+    };
+
+    if (visible) {
+      rotation.value = withRepeat(withTiming(360, { duration: 3000, easing: Easing.linear }), -1);
+      setPurchaseStep('IDLE');
+      loadBalances();
+    }
+  }, [visible, addresses]);
+
+  // --- VALIDATION LOGIC ---
+  const planPriceUsdc = useMemo(() => (plan ? plan.price / 10000 : 0), [plan]);
+  const hasEnoughSol = walletData.solValueUsd >= 0.25;
+  const hasEnoughUsdc = walletData.usdcBalance >= planPriceUsdc;
+  const canProceed = hasEnoughSol && hasEnoughUsdc;
+
+  const animatedGradientStyle = useAnimatedStyle(() => ({
+    transform: [{ rotateZ: `${rotation.value}deg` }],
+  }));
+
+  const handlePayment = async () => {
+    if (!plan || !user?.id || !canProceed) return;
+    try {
+      const response = await processEsimPurchase(plan, user.id, (stage) => {
+        setPurchaseStep(stage);
+      });
+      if (response) {
+        const allocatedProfile = response?.data?.obj?.esimList?.[0];
+        if (allocatedProfile) {
+          setProvisionedProfile(allocatedProfile);
+        } else {
+          throw new Error("Your eSIM is being prepared but the QR code is not ready yet.");
+        }
+      }
+    } catch (error: any) {
+      setPurchaseStep('IDLE');
+      Alert.alert("Purchase Failed", error.message || "An unexpected error occurred.");
     }
   };
 
-  // Animation Value
-  const rotation = useSharedValue(0);
-
-  // Start animation when modal opens
-  useEffect(() => {
-    if (visible) {
-      rotation.value = 0;
-      rotation.value = withRepeat(
-        withTiming(360, {
-          duration: 3000, // Slowed down to 3000ms for a more soothing effect
-          easing: Easing.linear,
-        }),
-        -1 // Infinite repeat
-      );
-    }
-  }, [visible]);
-
-  // Animated Style for the rotating gradient background
-  const animatedGradientStyle = useAnimatedStyle(() => {
-    return {
-      transform: [{ rotateZ: `${rotation.value}deg` }],
-    };
-  });
-
-  useEffect(() => {
-    if (status === 'success' || status === 'error') {
-      onClose(); // Hide the "Plan Summary" modal
-      if (status === 'error' && errorMessage) {
-        alert(errorMessage);
-      }
-    }
-  }, [status]);
-
   if (!plan) return null;
 
-  // Calculations
-  const displayPrice = (plan.price / 10000).toFixed(2);
-  const volumeGB = plan.volume ? (plan.volume / (1024 * 1024 * 1024)).toFixed(0) : '1';
-
+  const isProcessing = purchaseStep !== 'IDLE';
+  const volumeGB = plan.volume ? (plan.volume / (1024 ** 3)).toFixed(0) : '1';
 
   return (
-      <>
-    <Modal
-      animationType="slide"
-      transparent={true}
-      visible={visible}
-      onRequestClose={onClose}
-    >
-      <View style={styles.overlay}>
-        <Pressable style={styles.backdrop} onPress={onClose} />
+    <>
+      <Modal animationType="slide" transparent={true} visible={visible} onRequestClose={onClose}>
+        <View style={styles.overlay}>
+          <Pressable style={styles.backdrop} onPress={!isProcessing ? onClose : undefined} />
+          <BlurView intensity={90} tint="dark" style={[styles.modalContent, { paddingBottom: insets.bottom + 20 }]}>
+            <View style={styles.handleBar} />
 
-        <BlurView intensity={80} tint="dark" style={[styles.modalContent, { paddingBottom: 0 }]}>
+            {isProcessing ? (
+               /* --- 1. PROCESSING VIEW (CHECKLIST) --- */
+               <View style={styles.processingContainer}>
+                 <View style={styles.statusHeader}>
+                    <View style={styles.processingBadge}>
+                        <Text style={styles.tickIcon}>⚙️</Text>
+                    </View>
+                 </View>
+                 <Text style={styles.processingTitle}>Finalizing Your Plan</Text>
 
-          <View style={styles.handleBar} />
+                 <View style={styles.checklistContainer}>
+                   <ChecklistItem
+                     label="Processing Payment"
+                     status={purchaseStep === 'PAYING' ? 'in-progress' : 'done'}
+                   />
+                   <ChecklistItem
+                     label="Verifying Transaction"
+                     status={purchaseStep === 'PAYING' ? 'pending' : (purchaseStep === 'LOGGING' ? 'in-progress' : 'done')}
+                   />
+                   <ChecklistItem
+                     label="Allocating eSIM Profile"
+                     status={purchaseStep === 'PROVISIONING' ? 'in-progress' : (['PAYING', 'LOGGING'].includes(purchaseStep) ? 'pending' : 'done')}
+                   />
+                 </View>
 
-          {/* Header */}
-          <View style={styles.header}>
-            <View>
-              <Text style={styles.planName}>{plan.name}</Text>
-              <Text style={styles.planRegion}>Global Coverage</Text>
-            </View>
-            <View style={styles.priceTag}>
-              <Text style={styles.priceText}>${displayPrice}</Text>
-            </View>
-          </View>
+                 {purchaseStep === 'SUCCESS' && (
+                   <Pressable style={styles.doneButton} onPress={() => { onClose(); setPurchaseStep('IDLE'); }}>
+                     <Text style={styles.doneButtonText}>VIEW ESIM</Text>
+                   </Pressable>
+                 )}
+               </View>
+            ) : (
+              /* --- 2. IDLE VIEW (DETAILS & BALANCES) --- */
+              <>
+                <View style={styles.header}>
+                    <View>
+                        <Text style={styles.planName}>{plan.name}</Text>
+                        <Text style={styles.planRegion}>Global Coverage</Text>
+                    </View>
+                    <View style={styles.priceTag}>
+                        <Text style={styles.priceText}>${planPriceUsdc.toFixed(2)}</Text>
+                    </View>
+                </View>
 
-          <View style={styles.divider} />
+                {/* --- WALLET BALANCE SECTION --- */}
+                <View style={styles.balanceSummary}>
+                    <Text style={styles.balanceLabel}>Your Balance</Text>
+                    <View style={styles.balanceRow}>
+                        <Text style={[styles.balanceValue, !hasEnoughUsdc && { color: '#FF4B4B' }]}>
+                            {walletData.usdcBalance.toFixed(2)} USDC
+                        </Text>
+                        <View style={styles.balanceDivider} />
+                        <Text style={[styles.balanceValue, !hasEnoughSol && { color: '#FF4B4B' }]}>
+                            {walletData.solBalance.toFixed(4)} SOL (${walletData.solValueUsd.toFixed(2)})
+                        </Text>
+                    </View>
+                </View>
 
-          {/* Details Grid */}
-          <View style={styles.detailsGrid}>
-            <DetailItem label="Data" value={`${volumeGB} GB`} icon="📊" />
-            <DetailItem label="Validity" value={`${plan.duration} Days`} icon="⏳" />
-            <DetailItem label="Speed" value={plan.speed} icon="🚀" />
-            <DetailItem label="Type" value="eSIM" icon="📲" />
-          </View>
+                {/* --- WARNING UI --- */}
+                {!canProceed && !isFetchingBalance && (
+                  <View style={styles.warningBox}>
+                    <Text style={styles.warningTitle}>⚠️ Action Required</Text>
+                    {!hasEnoughUsdc && (
+                        <Text style={styles.warningText}>• Add more USDC to cover the plan cost.</Text>
+                    )}
+                    {!hasEnoughSol && (
+                        <Text style={styles.warningText}>• Add at least $1.00 in SOL to cover Network Gas Fees.</Text>
+                    )}
+                  </View>
+                )}
 
-          {/* Payment Summary */}
-          <View style={styles.summaryContainer}>
-             <View style={styles.row}>
-                <Text style={styles.summaryLabel}>Subtotal</Text>
-                <Text style={styles.summaryValue}>${displayPrice}</Text>
-             </View>
-             <View style={styles.row}>
-                <Text style={styles.summaryLabel}>Fees</Text>
-                <Text style={styles.summaryValue}>$0.00</Text>
-             </View>
-             <View style={[styles.row, styles.totalRow]}>
-                <Text style={styles.totalLabel}>Total</Text>
-                <Text style={styles.totalValue}>${displayPrice}</Text>
-             </View>
-          </View>
+                <View style={styles.detailsGrid}>
+                    <DetailItem label="Data" value={`${volumeGB} GB`} icon="📊" />
+                    <DetailItem label="Validity" value={`${plan.duration} Days`} icon="⏳" />
+                </View>
 
-          {/* --- ANIMATED PAY BUTTON --- */}
-          <Pressable onPress={handlePayment} style={styles.payButtonContainer}>
+                {/* --- ACTION BUTTON --- */}
+                <Pressable
+                  onPress={handlePayment}
+                  disabled={!canProceed || isFetchingBalance}
+                  style={[styles.payButtonContainer, (!canProceed || isFetchingBalance) && styles.disabledButton]}
+                >
+                  {/* 1. ANIMATED BORDER / BACKGROUND LAYER */}
+                  <View style={styles.animatedBorderContainer}>
+                    {canProceed && !isFetchingBalance && (
+                      <Animated.View style={[styles.rotatingGradient, animatedGradientStyle]}>
+                        {/* Updated colors to match Data Plans theme */}
+                        <LinearGradient
+                          colors={['#2F66F6', '#00E5FF', '#2F66F6']}
+                          start={{ x: 0, y: 0 }}
+                          end={{ x: 1, y: 1 }}
+                          style={{ flex: 1 }}
+                        />
+                      </Animated.View>
+                    )}
+                  </View>
 
-            {/* 1. The Rotating Gradient Layer (The Border) */}
-            <View style={styles.animatedBorderContainer}>
-               <Animated.View style={[styles.rotatingGradient, animatedGradientStyle]}>
-                 <LinearGradient
-                    // UPDATED COLORS:
-                    // Blue -> Sky Blue -> Cyan -> Blue
-                    // This creates a soothing "energy flow" that matches your button
-                    colors={['#00E5FF', '#2979FF', '#00E5FF']}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 2, y: 2}}
-                    style={{ flex: 1 }}
-                 />
-               </Animated.View>
-            </View>
+                  {/* 2. BUTTON CONTENT LAYER */}
+                  <View style={[
+                    styles.payButtonContent,
+                    !canProceed && { backgroundColor: '#1E293B' },
+                    canProceed && { backgroundColor: 'transparent' } // Allows the gradient to show through
+                  ]}>
+                    {canProceed && !isFetchingBalance && (
+                      <LinearGradient
+                        colors={['#2F66F6', '#00E5FF']}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 0 }}
+                        style={StyleSheet.absoluteFill}
+                      />
+                    )}
 
-            {/* 2. The Inner Content Layer (The actual button look) */}
-            <View style={styles.payButtonContent}>
-               <Text style={styles.payButtonText}>Pay Now</Text>
-            </View>
-          </Pressable>
-          <Pressable onPress={onClose} style={styles.cancelButton}>
-            <Text style={styles.cancelText}>Cancel</Text>
-          </Pressable>
+                    {isFetchingBalance ? (
+                      <ActivityIndicator color="#FFF" />
+                    ) : (
+                      <Text style={[
+                        styles.payButtonText,
+                        !canProceed && { color: '#64748B' },
+                        canProceed && { color: '#FFFFFF', fontWeight: '900' }
+                      ]}>
+                        {canProceed ? 'PAY NOW  →' : 'INSUFFICIENT FUNDS'}
+                      </Text>
+                    )}
+                  </View>
+                </Pressable>
 
-          {/* Spacer for bottom safe area */}
-          <View style={{ height: insets.bottom + 10, backgroundColor: 'transparent' }} />
+                <Pressable onPress={onClose} style={styles.cancelButton}>
+                    <Text style={styles.cancelText}>Cancel</Text>
+                </Pressable>
+              </>
+            )}
+          </BlurView>
+        </View>
+      </Modal>
 
-        </BlurView>
-      </View>
-    </Modal>
-     <ProcessingModal status={status} />
-
-         <ActivationModal
-                visible={status === 'success'}
-                profile={profile}
-                onClose={() => {
-                   // Reset app or go to Dashboard
-                   resetStatus();
-                   onClose();
-                }}
-              />
-            </>
+      <ActivationModal
+        visible={purchaseStep === 'SUCCESS'}
+        profile={provisionedProfile}
+        onClose={() => { setPurchaseStep('IDLE'); onClose(); }}
+      />
+    </>
   );
 }
 
-// Helper Component for Grid Items
-const DetailItem = ({ label, value, icon }: { label: string, value: string, icon: string }) => (
-  <View style={styles.detailItem}>
-    <Text style={styles.detailIcon}>{icon}</Text>
-    <View>
-      <Text style={styles.detailLabel}>{label}</Text>
-      <Text style={styles.detailValue}>{value}</Text>
+const DetailItem = ({ label, value, icon }: any) => (
+    <View style={styles.detailItem}>
+        <Text style={styles.detailIcon}>{icon}</Text>
+        <View>
+            <Text style={styles.detailLabel}>{label}</Text>
+            <Text style={styles.detailValue}>{value}</Text>
+        </View>
     </View>
-  </View>
 );
 
 const styles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    justifyContent: 'flex-end',
-    marginBottom: 0,
-  },
-  backdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-  },
-  modalContent: {
-    backgroundColor: '#1A1A1A',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    padding: Spacing.lg,
-    overflow: 'hidden',
-    borderTopWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
-    marginBottom: 0,
-  },
-  handleBar: {
-    width: 40,
-    height: 4,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    borderRadius: 2,
-    alignSelf: 'center',
-    marginBottom: Spacing.lg,
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: Spacing.md,
-  },
-  planName: {
-    color: '#FFF',
-    fontSize: 22,
-    fontWeight: '700',
-  },
-  planRegion: {
-    color: '#AAA',
-    fontSize: 14,
-    marginTop: 2,
-  },
-  priceTag: {
-    backgroundColor: 'rgba(47, 102, 246, 0.1)',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(47, 102, 246, 0.3)',
-  },
-  priceText: {
-    color: '#2F66F6',
-    fontSize: 20,
-    fontWeight: '700',
-  },
-  divider: {
-    height: 1,
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    marginVertical: Spacing.md,
-  },
-  detailsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    marginBottom: Spacing.lg,
-  },
-  detailItem: {
-    width: '48%',
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    padding: 12,
-    borderRadius: 12,
-    marginBottom: 10,
-  },
-  detailIcon: {
-    fontSize: 20,
-    marginRight: 10,
-  },
-  detailLabel: {
-    color: '#888',
-    fontSize: 12,
-  },
-  detailValue: {
-    color: '#FFF',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  summaryContainer: {
-    backgroundColor: 'rgba(0,0,0,0.2)',
-    padding: 16,
-    borderRadius: 16,
-    marginBottom: Spacing.lg,
-  },
-  row: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 8,
-  },
-  totalRow: {
-    marginTop: 8,
-    paddingTop: 8,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(255,255,255,0.1)',
-    marginBottom: 0,
-  },
-  summaryLabel: { color: '#AAA', fontSize: 14 },
-  summaryValue: { color: '#FFF', fontSize: 14 },
-  totalLabel: { color: '#FFF', fontSize: 16, fontWeight: '600' },
-  totalValue: { color: '#2F66F6', fontSize: 18, fontWeight: '700' },
+  overlay: { flex: 1, justifyContent: 'flex-end' },
+  backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.7)' },
+  modalContent: { backgroundColor: '#0F172A', borderTopLeftRadius: 32, borderTopRightRadius: 32, padding: Spacing.lg, borderTopWidth: 1, borderColor: 'rgba(255,255,255,0.1)' ,overflow: 'hidden',},
+  handleBar: { width: 40, height: 4, backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 2, alignSelf: 'center', marginBottom: Spacing.lg },
 
-  /* --- ANIMATED BUTTON STYLES --- */
-  payButtonContainer: {
-    position: 'relative',
-    height: 56,
-    borderRadius: 16,
-    marginBottom: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-    overflow: 'hidden',
-  },
-  animatedBorderContainer: {
-    ...StyleSheet.absoluteFillObject,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  rotatingGradient: {
-    width: '200%',
-    height: '400%',
-  },
+  // Checklist Styles
+  processingContainer: { paddingVertical: 40, alignItems: 'center' },
+  statusHeader: { marginBottom: 24, height: 80, justifyContent: 'center' },
+  processingBadge: { width: 80, height: 80, borderRadius: 40, backgroundColor: 'rgba(47, 102, 246, 0.1)', justifyContent: 'center', alignItems: 'center', borderWidth: 2, borderColor: '#2F66F6' },
+  tickIcon: { fontSize: 40 },
+  processingTitle: { color: '#FFF', fontSize: 22, fontWeight: '800', marginBottom: 32 },
+  checklistContainer: { width: '100%', padding: 20, backgroundColor: 'rgba(0,0,0,0.2)', borderRadius: 16, gap: 16 },
+  checklistItem: { flexDirection: 'row', alignItems: 'center' },
+  checklistIcon: { fontSize: 18, color: '#00E5FF', marginRight: 12, width: 24 },
+  checklistDoneIcon: { color: '#22C55E' },
+  checklistLabel: { fontSize: 16, color: '#FFF', fontWeight: '600' },
+  checklistPendingLabel: { color: '#475569' },
+  checklistDoneLabel: { color: '#94A3B8', textDecorationLine: 'line-through' },
+  doneButton: { marginTop: 32, backgroundColor: '#2F66F6', paddingHorizontal: 40, paddingVertical: 15, borderRadius: 20 },
+  doneButtonText: { color: '#FFF', fontWeight: '800', letterSpacing: 1 },
+
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+  planName: { color: '#FFF', fontSize: 20, fontWeight: '700' },
+  planRegion: { color: '#64748B', fontSize: 13 },
+  priceTag: { backgroundColor: 'rgba(0, 229, 255, 0.1)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12 },
+  priceText: { color: '#00E5FF', fontSize: 18, fontWeight: '800' },
+
+  balanceSummary: { backgroundColor: 'rgba(255,255,255,0.03)', padding: 16, borderRadius: 20, marginBottom: 16, borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)' },
+  balanceLabel: { color: '#64748B', fontSize: 11, fontWeight: '700', textTransform: 'uppercase', marginBottom: 8 },
+  balanceRow: { flexDirection: 'row', alignItems: 'center' },
+  balanceValue: { color: '#FFF', fontSize: 14, fontWeight: '600' },
+  balanceDivider: { width: 1, height: 14, backgroundColor: 'rgba(255,255,255,0.1)', marginHorizontal: 12 },
+
+  warningBox: { backgroundColor: 'rgba(255, 75, 75, 0.1)', padding: 16, borderRadius: 16, marginBottom: 16, borderWidth: 1, borderColor: 'rgba(255, 75, 75, 0.3)' },
+  warningTitle: { color: '#FF4B4B', fontWeight: '800', fontSize: 14, marginBottom: 6 },
+  warningText: { color: '#FF9494', fontSize: 12, fontWeight: '500', marginBottom: 4 },
+
+  detailsGrid: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 24 },
+  detailItem: { width: '48%', flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.03)', padding: 12, borderRadius: 16 },
+  detailIcon: { fontSize: 18, marginRight: 10 },
+  detailLabel: { color: '#64748B', fontSize: 10, fontWeight: '600' },
+  detailValue: { color: '#FFF', fontSize: 13, fontWeight: '700' },
+
+  payButtonContainer: { position: 'relative', height: 60, borderRadius: 20, marginBottom: 12, justifyContent: 'center', alignItems: 'center', overflow: 'hidden' },
+  disabledButton: { opacity: 0.8 },
+  animatedBorderContainer: { ...StyleSheet.absoluteFillObject, justifyContent: 'center', alignItems: 'center' },
+  rotatingGradient: { width: '150%', height: '150%' },
   payButtonContent: {
-    width: '98.5%',
+    width: '98%',
     height: '92%',
-    backgroundColor: '#1E3A8A',
-    borderRadius: 15,
+    borderRadius: 19,
     justifyContent: 'center',
     alignItems: 'center',
     zIndex: 1,
+    overflow: 'hidden', // Required for the internal LinearGradient
   },
   payButtonText: {
-    color: '#FFF',
     fontSize: 16,
-    fontWeight: '700',
+    fontWeight: '800',
+    letterSpacing: 1.5, // Matches the premium look
+    textTransform: 'uppercase', // Matches Data Plans style
   },
-  /* ---------------------------------- */
-
-  cancelButton: {
-    paddingVertical: 12,
-    alignItems: 'center',
-  },
+  cancelButton: { paddingVertical: 12, alignItems: 'center' },
   cancelText: {
-    color: '#666',
-    fontSize: 14,
-    fontWeight: '500',
-  }
+      color: '#94A3B8', // ✅ FIX: A much lighter, more visible Slate/Grey color
+      fontSize: 14,
+      fontWeight: '700', // Bolder to improve readability
+      letterSpacing: 0.5,
+    },
+  divider: { height: 1, backgroundColor: 'rgba(255,255,255,0.1)', marginVertical: 16 }
 });

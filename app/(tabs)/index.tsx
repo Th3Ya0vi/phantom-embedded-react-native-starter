@@ -10,9 +10,13 @@ import {
   ActivityIndicator,
   LayoutAnimation,
   Platform,
+  Image,
   UIManager
 } from 'react-native';
+import { storage } from '@/lib/storage/storage'
 import { LinearGradient } from 'expo-linear-gradient';
+import { CoinButton } from '@/components/ui/CoinButton'; // Import the updated CoinButton
+import { RewardsModal, RewardActivity } from '@/components/modals/RewardsModal'; // Import the new RewardsModal
 import { BlurView } from 'expo-blur';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -58,6 +62,16 @@ export default function DashboardScreen() {
   const solanaAccount = addresses?.find(addr => addr.addressType === AddressType.solana);
   const walletAddress = solanaAccount?.address;
 
+  // --- REWARDS STATE ---
+    const [isRewardsModalVisible, setRewardsModalVisible] = useState(false);
+    const [earnedCoins, setEarnedCoins] = useState(1250); // Example total coins
+    const [rewardActivities, setRewardActivities] = useState<RewardActivity[]>([ // Example activity data
+      { id: '1', title: 'First Purchase', points: 1000 },
+      { id: '2', title: 'Daily Login Bonus', points: 50 },
+      { id: '3', title: 'Referral Bonus', points: 200 },
+    ]);
+
+
   // Add state for wallet balance
 const [walletData, setWalletData] = useState({ totalValue: 0, solBalance: 0, usdcBalance: 0 });  // --- STATE MANAGEMENT ---
   const [loading, setLoading] = useState(true);
@@ -76,13 +90,20 @@ const [walletData, setWalletData] = useState({ totalValue: 0, solBalance: 0, usd
 
   // --- DATA FETCHING & ACTIONS ---
   const fetchData = useCallback(async () => {
+
     const userId = user?.id || user?._id;
-    if (!userId) {
-      setLoading(false);
-      return;
+      const token = await storage.getAccessToken();
+
+    if (!(userId) || !(token)) {
+      console.log("[DASHBOARD] Skipping fetch: No session or token.");
+          setSubscriptions([]);
+          setLoading(false);
+          return;
     }
     try {
+        setLoading(true);
       const subsResponse = await handleGetUserSubscriptions(userId);
+        console.log("[DASHBOARD] Subscriptions received:", subsResponse);
       const rawSubs = Array.isArray(subsResponse) ? subsResponse : subsResponse?.data || [];
       const activeSubs = rawSubs
         .filter((s: any) => s && s.esimTranNo && !['CANCEL', 'SUSPEND', 'DELETED'].includes(s.esimStatus))
@@ -102,8 +123,14 @@ const [walletData, setWalletData] = useState({ totalValue: 0, solBalance: 0, usd
       } else {
         setSubscriptions([]);
       }
-    } catch (error) {
-      console.error("[DASHBOARD] Fetch Chain Failed:", error);
+    } catch (error: any) {
+              // ✅ SPECIFIC DEBUGGING FOR 404
+              if (error.response?.status === 404) {
+                  console.warn("[DASHBOARD] 404 Received: This user likely has no active plans yet.");
+                  setSubscriptions([]); // Gracefully handle as "No Plans"
+              } else {
+                  console.error("[DASHBOARD] Fetch Chain Failed:", error.message);
+              }
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -140,7 +167,10 @@ const [walletData, setWalletData] = useState({ totalValue: 0, solBalance: 0, usd
 const copyAddress = async () => {
     if (!walletAddress) return;
     await Clipboard.setStringAsync(walletAddress);
-    alert('Address copied to clipboard!'); // Simple feedback
+    Alert.alert(
+                  'Copied',
+                  'Address copied to clipboard!\n\n⚠️ Only transfer SOL & USDC tokens to this address.'
+                );
   };
 
 const truncatedAddress = walletAddress
@@ -228,11 +258,19 @@ const truncatedAddress = walletAddress
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#00E5FF" />}
       >
-        {/* WELCOME */}
+        {/* ✅ UPDATED WELCOME SECTION */}
+               <View style={styles.headerRow}>
+                 {/* Greeting on the left */}
+
         <View style={styles.greeting}>
-          <Text style={styles.greetingText}>Hi {user?.email?.split('@')[0] || 'Traveler'} 👋</Text>
+          <Text style={styles.greetingText}>Hi {user?.email?.split('@')[0] || 'Degen'} 👋</Text>
           <Text style={styles.subGreeting}>GeSIM Control Center</Text>
         </View>
+                 {/* Coin Button on the right, now opens the modal */}
+                 <CoinButton onPress={() => setRewardsModalVisible(true)} />
+               </View>
+
+
                  {/* --- WALLET CARD SECTION --- */}
                  <View style={styles.section}>
                    <View style={styles.walletCardContainer}>
@@ -294,11 +332,15 @@ const truncatedAddress = walletAddress
                     </View>
 
                     {/* Right side: Stylized QR Button */}
-                    <Pressable onPress={() => handleViewQr(item)} style={styles.qrButton}>
-                      <Text style={styles.qrIcon}>􀖄</Text>
+                     <Pressable onPress={() => handleViewQr(item)} style={styles.qrButton}>
+                      {/* ✅ REPLACED with an Image component */}
+                      <Image
+                      source={require('../../assets/qr-icon.png')}
+                      style={styles.qrIconImage}
+                      />
                       <Text style={styles.qrButtonText}>View QR</Text>
-                    </Pressable>
-                  </View>
+                      </Pressable>
+                      </View>
 
                   {/* Progress bar */}
                   <View style={styles.progressTrack}>
@@ -382,6 +424,25 @@ const truncatedAddress = walletAddress
       </ScrollView>
 
      {/* RENDER MODALS */}
+       {/* 1. The actual Rewards Modal (now with a transparent background) */}
+           <RewardsModal
+             visible={isRewardsModalVisible}
+             onClose={() => setRewardsModalVisible(false)}
+             totalCoins={earnedCoins}
+             activities={rewardActivities}
+           />
+
+           {/* ... Your other modals (PurchaseModal, ActivationModal) ... */}
+
+           {/* 2. ✅ The Blur Overlay, rendered conditionally */}
+           {isRewardsModalVisible && (
+             <BlurView
+               intensity={25}
+               tint="dark"
+               style={StyleSheet.absoluteFill} // This makes it cover the whole screen
+             />
+           )}
+
            <ActivationModal
              visible={qrModalVisible}
              profile={selectedForQr}
@@ -394,6 +455,7 @@ const truncatedAddress = walletAddress
                fetchData();
              }}
            />
+
            <PurchaseModal
              visible={isModalVisible}
              plan={selectedPlan}
@@ -412,13 +474,22 @@ const truncatedAddress = walletAddress
 const styles = StyleSheet.create({
   container: { flex: 1 },
   content: { padding: Spacing.lg, paddingBottom: 40 },
-  greeting: { marginBottom: 32 },
+  greeting: {  },
   greetingText: { color: '#FFF', fontSize: 28, fontWeight: '800' },
   subGreeting: { color: '#00E5FF', fontSize: 13, fontWeight: '600', letterSpacing: 1.5 },
   section: { marginBottom: 32 },
   sectionTitle: { color: '#FFF', fontSize: 20, fontWeight: '700', marginBottom: 16 },
   sectionHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
   viewAll: { color: '#2F66F6', fontWeight: '800' },
+
+  headerRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      paddingHorizontal: Spacing.lg, // Assuming Spacing.lg is your standard padding
+      marginBottom: 32,
+    },
+
 
   /* --- CARD STYLES --- */
   planCard: {
@@ -493,11 +564,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginLeft: 12,
   },
-  qrIcon: {
-    fontSize: 28,
-    color: '#FFF',
-    marginBottom: 4,
-  },
+  qrIconImage: {
+      width: 28, // Adjust size as needed
+      height: 28, // Adjust size as needed
+      marginBottom: 4,
+    },
   qrButtonText: {
     color: '#2F66F6',
     fontSize: 10,

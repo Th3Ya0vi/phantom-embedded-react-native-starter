@@ -7,6 +7,7 @@ type SessionState = {
   isHydrated: boolean
   login: (user: any, token: string) => Promise<void>
   logout: () => Promise<void>
+  updateUser: (updatedUser: any) => Promise<void>
 }
 
 const SessionContext = createContext<SessionState | null>(null)
@@ -66,6 +67,7 @@ const updateUser = async (updatedUser: any) => {
         isHydrated,
         login,
         logout,
+        updateUser,
       }}
     >
       {children}

@@ -24,7 +24,7 @@ The Phantom React Native SDK requires native modules that are not available in E
 
 Before you begin, ensure you have:
 
-- **Node.js 18+** installed
+- **Node.js 16+** installed
 - **pnpm** package manager (`npm install -g pnpm`)
 - **Expo CLI** (`npm install -g expo-cli`)
 - **iOS Simulator** (macOS) or **Android Emulator** set up

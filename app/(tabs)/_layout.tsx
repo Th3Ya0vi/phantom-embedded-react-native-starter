@@ -19,7 +19,7 @@ export default function TabLayout() {
       useEffect(() => {
           if (isHydrated && !isConnected && isAuthenticated) {
             console.log("[SECURITY] Wallet disconnected manually. Wiping local session...");
-            logout(); // Just clear the local token
+         //   logout(); // Just clear the local token
           }
         }, [isConnected, isAuthenticated, isHydrated]);
 

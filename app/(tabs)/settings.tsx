@@ -26,7 +26,7 @@ export default function SettingsScreen() {
 
   return (
     <LinearGradient colors={Gradients.background} style={styles.container}>
-      <ScrollView contentContainerStyle={[styles.content, { paddingTop: insets.top + 20 }]}>
+     <ScrollView contentContainerStyle={[styles.content, { paddingTop: insets.top + 20 }]}>
 
         <View style={styles.header}>
           <Text style={styles.title}>System</Text>
@@ -36,27 +36,27 @@ export default function SettingsScreen() {
         {/* Profile Glass Card */}
         <BlurView intensity={20} tint="dark" style={styles.profileCard}>
           <LinearGradient colors={['#2F66F6', '#00E5FF']} style={styles.avatar}>
-            <Text style={styles.avatarText}>H</Text>
+            <Text style={styles.avatarText}>D</Text>
           </LinearGradient>
           <View style={{ flex: 1, marginLeft: 16 }}>
-            <Text style={styles.profileName}>Hrishique</Text>
+            <Text style={styles.profileName}>DEGEN </Text>
             <View style={styles.verifiedBadge}>
               <Text style={styles.verifiedText}>Verified User</Text>
             </View>
           </View>
-          <Pressable style={styles.editBtn}>
+      {/*}    <Pressable style={styles.editBtn}>
             <Text style={styles.editBtnText}>Edit</Text>
-          </Pressable>
+          </Pressable>*/}
         </BlurView>
 
         {/* Settings Groups */}
         <SettingsGroup title="Preferences">
-          <SettingsRow
+         {/*} <SettingsRow
             label="Dark Appearance"
             right={<Switch value={isDarkMode} onValueChange={setIsDarkMode} trackColor={{ true: '#2F66F6' }} />}
-          />
-          <SettingsRow label="Default Currency" value="USDC" showChevron />
-          <SettingsRow label="Language" value="English" showChevron />
+          /> */}
+          <SettingsRow label="Default Currency" value="USDC"  />
+          <SettingsRow label="Language" value="English"  />
         </SettingsGroup>
 
         <SettingsGroup title="Knowledge Base">
@@ -72,7 +72,7 @@ export default function SettingsScreen() {
         </SettingsGroup>
 
         <Text style={styles.version}>GeSIM Protocol v1.0.42 • Built on Solana</Text>
-      </ScrollView>
+       </ScrollView>
     </LinearGradient>
   );
 }

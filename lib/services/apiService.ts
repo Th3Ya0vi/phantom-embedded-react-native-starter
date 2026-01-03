@@ -33,7 +33,7 @@ export const apiService = {
   login: async (data: {
     walletAddress: string
   }) => {
-    const res = await instance.post('/api/auth/getaccess', data)
+    const res = await instance.post('/api/auth/getaccess', data, { isPublic: true })
     return res.data
   },
 
@@ -43,7 +43,7 @@ export const apiService = {
   },
 
   getUser: async () => {
-      const res = await instance.post('/api/user/getuser')
+      const res = await instance.post('/api/user/getuser', {}, { isPublic: true })
       return res.data
     },
 

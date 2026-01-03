@@ -1,3 +1,10 @@
+// metro.config.js
+const os = require('os');
+
+// Polyfill for older Node versions
+if (!os.availableParallelism) {
+  os.availableParallelism = () => os.cpus().length;
+}
 const { getDefaultConfig } = require('expo/metro-config');
 
 const config = getDefaultConfig(__dirname);
