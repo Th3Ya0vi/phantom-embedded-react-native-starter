@@ -430,7 +430,7 @@ export default function DashboardScreen() {
                 <Text style={styles.fTitle} numberOfLines={1}>{plan.name}</Text>
                 <Text style={styles.fData}>{(plan.volume / (1024 ** 3)).toFixed(0)} GB</Text>
                 <View style={styles.featuredFooter}>
-                  <Text style={styles.fPrice}>${(plan.price / 10000).toFixed(2)}</Text>
+                  <Text style={styles.fPrice}>${(plan.price * 1.4 / 10000).toFixed(2)}</Text>
                   <Pressable style={styles.fBuyBtn} onPress={() => { setSelectedPlan(plan); setModalVisible(true); }}>
                     <Text style={styles.fBuyText}>Buy</Text>
                   </Pressable>

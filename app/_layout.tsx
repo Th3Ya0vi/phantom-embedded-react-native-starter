@@ -9,10 +9,10 @@ import { NotificationProvider } from '@/lib/ui/NotificationContext';
 import { SessionProvider } from '@/lib/session/SessionContext'
 import { PrivyProvider } from '@privy-io/expo';
 import { colors } from '@/lib/theme'
-import * as Sentry from '@sentry/react-native'
-  ;
+import * as Sentry from '@sentry/react-native';
 import Constants from 'expo-constants';
 import * as WebBrowser from 'expo-web-browser';
+
 import * as Linking from 'expo-linking';
 import { useEffect } from 'react';
 
@@ -32,6 +32,22 @@ Sentry.init({
   replaysOnErrorSampleRate: 1,
   integrations: [Sentry.mobileReplayIntegration(), Sentry.feedbackIntegration()],
 });
+
+import { usePathname } from 'expo-router';
+import { useSession } from '@/lib/session/SessionContext';
+
+function PathTracker() {
+  const pathname = usePathname();
+  const { savePath } = useSession();
+
+  useEffect(() => {
+    if (pathname) {
+      savePath(pathname);
+    }
+  }, [pathname]);
+
+  return null;
+}
 
 export default function RootLayout() {
   // Fallback to empty string if extra is undefined to avoid crashes, but these should be in app.json
@@ -56,6 +72,7 @@ export default function RootLayout() {
 
       <NotificationProvider>
         <SessionProvider>
+          <PathTracker />
           <Stack
             screenOptions={{
               headerStyle: { backgroundColor: colors.paper },

@@ -1,9 +1,9 @@
 import { useCallback, useState } from 'react'
 import { apiService } from '@/lib/services/apiService'
 import { useApiExecutor } from './useApiExecutor'
-import { Connection, PublicKey, LAMPORTS_PER_SOL, SystemProgram, Transaction } from '@solana/web3.js';
+import { Connection, PublicKey, LAMPORTS_PER_SOL, SystemProgram, Transaction, SendTransactionError } from '@solana/web3.js';
 import { getAssociatedTokenAddress, createTransferInstruction, TOKEN_PROGRAM_ID } from '@solana/spl-token';
-import { useEmbeddedSolanaWallet } from '@privy-io/expo';
+import { useEmbeddedSolanaWallet, usePrivy } from '@privy-io/expo';
 import axios from 'axios';
 
 //  RPC endpoint.
@@ -14,9 +14,18 @@ const connection = new Connection(SOLANA_RPC_ENDPOINT);
 export const useApiActions = () => {
   const { execute, loading, error } = useApiExecutor()
 
-  // Privy Embedded Solana Wallet
+  // Privy Hooks
+  const { user } = usePrivy();
   const wallet = useEmbeddedSolanaWallet();
-  // const [walletAddress, setWalletAddress] = useState<string | null>(null); // Unused for now, deriving from wallet
+
+  // Helper to extract Solana address from Privy user
+  const getSolanaAddress = useCallback((u: any) => {
+    if (!u) return null;
+    const solanaAccount = u.linked_accounts?.find(
+      (acc: any) => acc.type === 'wallet' && acc.chain_type === 'solana'
+    );
+    return solanaAccount?.address || null;
+  }, []);
 
   const handleGetUser = useCallback(() => {
     return execute(() => apiService.getUser())
@@ -147,17 +156,29 @@ export const useApiActions = () => {
     async (amount: string, token: 'SOL' | 'USDC') => {
       console.log(`[TX-START] Initiating ${token} transfer. Amount: ${amount}`);
 
-      const w = wallet as any;
-      if (wallet.status !== 'connected' || !w.provider) {
-        throw new Error('Wallet not connected or provider unavailable');
+      if (wallet.status !== 'connected' && wallet.status !== 'reconnecting') {
+        throw new Error(`Wallet not ready (Status: ${wallet.status}). Please wait a moment and try again.`);
       }
 
-      const provider = w.provider;
-      const fromPubkey = provider.publicKey;
+      console.log(`[TX-PROVIDER] Fetching provider for status: ${wallet.status}...`);
+      const provider = await wallet.getProvider();
 
-      if (!fromPubkey) throw new Error("Wallet public key not found");
+      if (!provider) {
+        throw new Error('Solana provider unavailable. Please ensure your embedded wallet is initialized.');
+      }
 
-      const recipient = 'bWvKxXuv3hiRQYsRXzJgZcFJPTBvAghgjp6prbzEPBG';
+      // Robust Address Extraction
+      const privyAddress = getSolanaAddress(user);
+      const hookAddress = (wallet as any).wallet?.address || (wallet as any).address;
+      const address = privyAddress || hookAddress;
+
+      if (!address) {
+        throw new Error("Wallet public key not found. Please ensure your wallet is connected.");
+      }
+
+      const fromPubkey = new PublicKey(address);
+
+      const recipient = 'QgBkSapQmUqwzAU8RcP7HeR3ySPd2pbf1d2tzAEfHUz';
       const recipientPubKey = new PublicKey(recipient);
       const numericAmount = parseFloat(amount);
       const userAddressStr = fromPubkey.toBase58();
@@ -209,23 +230,69 @@ export const useApiActions = () => {
       }
 
       // Ensure blockhash is set
-      const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
+      const { blockhash } = await connection.getLatestBlockhash();
       transaction.recentBlockhash = blockhash;
+
+      // IMPORTANT: When 'sponsor: true' is used, Privy's relayer replaces the feePayer.
+      // Since we are now enforcing a SOL balance in the UI ($0.50 min), 
+      // we set the feePayer to the user. This ensures simulation succeeds
+      // even if sponsorship is delayed or unavailable.
       transaction.feePayer = fromPubkey;
 
-      console.log('[TX-SIGN] Requesting signature via Privy Provider...');
-      const signature = await provider.signAndSendTransaction(transaction);
+      console.log('[TX-SIGN] Requesting signature via Privy Provider (Sponsored RPC)...');
 
-      console.log('[TX-SUCCESS] Signature:', signature);
-
-      // If it returns object with signature
-      if (typeof signature === 'object' && signature.signature) {
-        return signature.signature;
+      // Pre-check balances for debugging
+      try {
+        const balances = await getWalletBalance(address);
+        console.log(`[TX-DEBUG] Wallet ${address} Balances: SOL=${balances.solBalance}, USDC=${balances.usdcBalance}`);
+      } catch (e) {
+        console.warn(`[TX-DEBUG] Could not fetch balances for pre-check logging.`);
       }
-      return signature;
+
+      try {
+        const response = await provider.request({
+          method: 'signAndSendTransaction',
+          params: {
+            transaction: transaction,
+            connection: connection,
+            options: {
+              sponsor: true,
+              preflightCommitment: 'confirmed'
+            } as any
+          }
+        });
+
+        const signature = (response as any).signature;
+        console.log('[TX-SUCCESS] Signature:', signature);
+
+        // If it returns object with signature
+        if (typeof signature === 'object' && signature.signature) {
+          return signature.signature;
+        }
+        return signature;
+      } catch (err: any) {
+        console.error('[TX-ERROR] Transaction failed during signAndSendTransaction:');
+
+        // Detailed Solana error logging as requested by user
+        if (err.logs) {
+          console.error('[TX-ERROR] Error Logs (Raw):', JSON.stringify(err.logs, null, 2));
+        } else if (typeof err.getLogs === 'function') {
+          console.error('[TX-ERROR] Error Logs (via getLogs()):', JSON.stringify(err.getLogs(), null, 2));
+        }
+
+        if (err.message && err.message.includes('Simulation failed')) {
+          console.error('[TX-ERROR] Simulation Failure Summary:', err.message);
+
+          if (err.message.includes('Attempt to debit an account')) {
+            console.error('[TX-ERROR] ANALYSIS: This error often occurs if the transaction feePayer has 0 SOL. GeSIM uses Privy Gas Sponsorship, but if the feePayer was manually set to the user account (0 SOL), the simulation fails.');
+          }
+        }
+
+        throw err;
+      }
 
     },
-    [wallet, connection]
+    [wallet, connection, user, getSolanaAddress]
   );
 
   const processEsimPurchase = useCallback(async (
@@ -238,8 +305,8 @@ export const useApiActions = () => {
     try {
       // --- 1. PAYMENT ---
       onProgress('PAYING');
-      const dollarAmount = (plan.price / 10000).toString();
-      console.log(`[1/4 PAYMENT] Requesting ${dollarAmount} USDC...`);
+      const dollarAmount = (plan.price * 1.4 / 10000).toString();
+      console.log(`[1/4 PAYMENT] Requesting inflated ${dollarAmount} USDC (includes 40% markup)...`);
       const signature = await handleSendTransaction(dollarAmount, 'USDC');
       if (!signature) throw new Error("Payment cancelled or signature missing.");
       const txHash = typeof signature === 'object' ? signature.signature : signature;
@@ -249,7 +316,7 @@ export const useApiActions = () => {
       onProgress('LOGGING');
       const transactionData = {
         userId: Number(userId),
-        amount: Number(plan.price / 10000),
+        amount: Number(plan.price * 1.4 / 10000), // Log the actual inflated amount paid
         tokenUsed: "USDC",
         txHash: txHash,
         transactionTypeId: 1,
@@ -262,6 +329,8 @@ export const useApiActions = () => {
       // --- 3. ORDERING ---
       onProgress('PROVISIONING');
       const orderPayload = {
+        transactionId: txHash,
+        idempotencyKey: txHash,
         amount: Number(plan.price),
         packageInfoList: [{
           packageCode: plan.packageCode,
@@ -303,8 +372,6 @@ export const useApiActions = () => {
       if (error.response) {
         console.error(`[AXIOS ERROR RESPONSE] URL: ${error.config?.url}`);
         console.error(`[AXIOS ERROR RESPONSE] DATA:`, JSON.stringify(error.response.data, null, 2));
-      } else {
-        console.error(`[FLOW ERROR]: ${error.message}`);
       }
       console.log("-----------------------------------------------------");
       throw error;

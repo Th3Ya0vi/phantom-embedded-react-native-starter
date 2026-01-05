@@ -4,43 +4,49 @@ import { Buffer } from 'buffer';
 // 2. Manually polyfill global variables
 global.Buffer = Buffer;
 
-import { ActivityIndicator, View, StyleSheet } from 'react-native'
+import { View, StyleSheet, Image } from 'react-native'
 import { Redirect } from 'expo-router'
 import { useSession } from '@/lib/session/SessionContext'
 import { usePrivy } from '@privy-io/expo'
 import { colors } from '@/lib/theme'
 
 export default function Index() {
-  const { isHydrated, isAuthenticated } = useSession()
+  const { isHydrated, isAuthenticated, user: sessionUser, lastPath } = useSession()
   const { user, isReady } = usePrivy()
   const isConnected = !!user;
 
-  // 1️⃣ Wait for storage hydration
-  if (!isHydrated) {
+  // 1️⃣ Wait for storage hydration AND Privy Readiness
+  if (!isHydrated || !isReady) {
     return (
       <View style={styles.container}>
-        <ActivityIndicator size="large" />
+        <Image
+          source={require('../assets/gesim_with_loading_dots.gif')}
+          style={styles.splashGif}
+          resizeMode="contain"
+        />
       </View>
     )
   }
 
-  // 2️⃣ Wallet not connected
-  if (!isConnected) {
-    return <Redirect href="/home" />
-  }
-
-  // 3️⃣ Wallet connected + backend session OK
+  // 2️⃣ Case: Backend Session Exists
+  // If we have a local session, trust it and go to the app or invite
   if (isAuthenticated) {
-    return <Redirect href="/wallet" />
+    if (sessionUser?.inviteClaimed) {
+      // Resume from last path or go to tabs root
+      const resumePath = (lastPath && lastPath.includes('(tabs)')) ? lastPath : '/(tabs)';
+      return <Redirect href={resumePath as any} />
+    }
+    return <Redirect href="/invite" />
   }
 
+  // 3️⃣ Case: No Backend Session but Wallet Connected
+  // This handles the state where Privy knows the user but the backend doesn't yet (auto-login stage)
   if (isConnected) {
     return <Redirect href="/invite" />
   }
-  // 4️⃣ Wallet connected but no backend session yet
-  // return <Redirect href="/home" />
 
-
+  // 4️⃣ Default: Go to Landing Page
+  return <Redirect href="/home" />
 }
 
 
@@ -50,5 +56,9 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  splashGif: {
+    width: 200,
+    height: 200,
   },
 })

@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useCallback, memo } from 'react';import {
+import React, { useState, useMemo, useEffect, useCallback, memo } from 'react'; import {
   View,
   Text,
   StyleSheet,
@@ -14,6 +14,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors as ThemeColors, Spacing as ThemeSpacing, Typography as ThemeTypography } from '@/lib/theme';
+import { createShimmerPlaceholder } from 'react-native-shimmer-placeholder';
+const ShimmerPlaceholder = createShimmerPlaceholder(LinearGradient);
 
 // Fallbacks
 const Colors = ThemeColors || { primary: '#2F66F6', textPrimary: '#FFF', textSecondary: '#AAA', surface: '#1A1A1A' };
@@ -30,102 +32,134 @@ import { PurchaseModal } from '@/components/modals/PurchaseModal';
 const REGIONS = ['Global', 'Europe', 'Asia', 'USA', 'Africa'];
 const ITEMS_PER_PAGE = 10;
 
+// --- PRE-CALCULATE DATA (ONCE) ---
+// We map the 1,800+ items outside the render loop or useMemo to avoid repetetive work
+const PRE_PROCESSED_PLANS = allPlansData.map(plan => ({
+  ...plan,
+  locationName: plan.locationNetworkList?.[0]?.locationName || 'Global',
+  displayPrice: (plan.price * 1.4 / 10000).toFixed(2),
+  displayVolume: plan.volume ? (plan.volume / (1024 ** 3)).toFixed(0) + ' GB' : '1 GB'
+}));
+
 // --- 1. MEMOIZED PLAN ITEM (Futuristic Design) ---
 const PlanItem = memo(({ item, onBuy }: { item: any, onBuy: (item: any) => void }) => {
+  // Performance Safeguard: BlurView is intensive on Android
+  const UseBlur = Platform.OS === 'ios';
+
+  if (!item) return null;
+
   return (
     <View style={styles.cardContainer}>
       {/* Outer Glow Border */}
       <LinearGradient
-        colors={['rgba(255, 255, 255, 0.1)', 'rgba(255, 255, 255, 0.02)']}
+        colors={['rgba(255, 255, 255, 0.12)', 'rgba(255, 255, 255, 0.03)']}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={styles.cardBorder}
       >
-        <BlurView intensity={Platform.OS === 'ios' ? 40 : 20} tint="dark" style={styles.cardContent}>
-
-          {/* Header: Title & Price */}
-          <View style={styles.cardHeader}>
-            <View style={styles.titleGroup}>
-              <Text style={styles.planTitle}>{item.name}</Text>
-              <View style={styles.regionBadge}>
-                <Text style={styles.regionText}>{item.locationName.toUpperCase()}</Text>
-              </View>
+        <View style={styles.cardInnerWrapper}>
+          {UseBlur ? (
+            <BlurView intensity={40} tint="dark" style={styles.cardContent}>
+              <PlanItemContent item={item} onBuy={onBuy} />
+            </BlurView>
+          ) : (
+            <View style={[styles.cardContent, { backgroundColor: 'rgba(15, 23, 42, 0.92)' }]}>
+              <PlanItemContent item={item} onBuy={onBuy} />
             </View>
-            <View style={styles.priceGroup}>
-              <Text style={styles.currency}>$</Text>
-              <Text style={styles.price}>{item.displayPrice}</Text>
-            </View>
-          </View>
-
-          {/* Divider */}
-          <View style={styles.divider} />
-
-          {/* Details Row (Grid Layout) */}
-          <View style={styles.detailsRow}>
-            <View style={styles.detailItem}>
-              <Text style={styles.detailLabel}>DATA</Text>
-              <Text style={styles.detailValue}>{item.displayVolume}</Text>
-            </View>
-            <View style={styles.verticalLine} />
-            <View style={styles.detailItem}>
-              <Text style={styles.detailLabel}>VALIDITY</Text>
-              <Text style={styles.detailValue}>{item.duration} Days</Text>
-            </View>
-            <View style={styles.verticalLine} />
-            <View style={styles.detailItem}>
-              <Text style={styles.detailLabel}>SPEED</Text>
-              <Text style={styles.detailValue}>{item.speed}</Text>
-            </View>
-          </View>
-
-          {/* Buy Button (Neon Style) */}
-          <Pressable
-            style={({ pressed }) => [styles.buyButton, pressed && { opacity: 0.8 }]}
-            onPress={() => onBuy(item)}
-          >
-            <LinearGradient
-              colors={['#2F66F6', '#00E5FF']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={styles.buyGradient}
-            >
-              <Text style={styles.buyText}>Purchase Plan</Text>
-              <Text style={styles.arrow}>→</Text>
-            </LinearGradient>
-          </Pressable>
-
-        </BlurView>
+          )}
+        </View>
       </LinearGradient>
     </View>
   );
 });
 
+// Extracted content to avoid duplication inside PlanItem
+const PlanItemContent = ({ item, onBuy }: { item: any, onBuy: (item: any) => void }) => (
+  <>
+    {/* Header: Title & Price */}
+    <View style={styles.cardHeader}>
+      <View style={styles.titleGroup}>
+        <Text style={styles.planTitle} numberOfLines={1}>{item.name || 'Data Plan'}</Text>
+        <View style={styles.regionBadge}>
+          <Text style={styles.regionBadgeText}>{(item.locationName || 'GLOBAL').toUpperCase()}</Text>
+        </View>
+      </View>
+      <View style={styles.priceGroup}>
+        <Text style={styles.currency}>$</Text>
+        <Text style={styles.price}>{item.displayPrice || '0.00'}</Text>
+      </View>
+    </View>
+
+    {/* Divider */}
+    <View style={styles.divider} />
+
+    {/* Details Row (Grid Layout) */}
+    <View style={styles.detailsRow}>
+      <View style={styles.detailItem}>
+        <Text style={styles.detailLabel}>DATA</Text>
+        <Text style={styles.detailValue}>{item.displayVolume}</Text>
+      </View>
+      <View style={styles.verticalLine} />
+      <View style={styles.detailItem}>
+        <Text style={styles.detailLabel}>VALIDITY</Text>
+        <Text style={styles.detailValue}>{item.duration || 0} Days</Text>
+      </View>
+      <View style={styles.verticalLine} />
+      <View style={styles.detailItem}>
+        <Text style={styles.detailLabel}>SPEED</Text>
+        <Text style={styles.detailValue}>{item.speed || '4G/5G'}</Text>
+      </View>
+    </View>
+
+    {/* Buy Button (Neon Style) */}
+    <Pressable
+      style={({ pressed }) => [styles.buyButton, pressed && { opacity: 0.8 }]}
+      onPress={() => onBuy(item)}
+    >
+      <LinearGradient
+        colors={['#2F66F6', '#00E5FF']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 0 }}
+        style={styles.buyGradient}
+      >
+        <Text style={styles.buyText}>Purchase Plan</Text>
+        <Text style={styles.arrow}>→</Text>
+      </LinearGradient>
+    </Pressable>
+  </>
+);
+
 export default function PlansScreen() {
   const insets = useSafeAreaInsets();
   const [activeRegion, setActiveRegion] = useState('Global');
   const [searchQuery, setSearchQuery] = useState('');
-  const [showSuggestions, setShowSuggestions] = useState(false);
   const [visibleCount, setVisibleCount] = useState(ITEMS_PER_PAGE);
   const [selectedPlan, setSelectedPlan] = useState<any | null>(null);
   const [isModalVisible, setModalVisible] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
-  // --- 2. PRE-CALCULATE DATA ---
+  useEffect(() => {
+    const timer = setTimeout(() => setIsLoading(false), 1200);
+    return () => clearTimeout(timer);
+  }, []);
+
+  // --- 2. LIGHT FILTERING (Using Pre-processed Data) ---
   const allFilteredPlans = useMemo(() => {
-    let data = allPlansData.map(plan => ({
-      ...plan,
-      locationName: plan.locationNetworkList?.[0]?.locationName || 'Global',
-      displayPrice: (plan.price / 10000).toFixed(2),
-      displayVolume: plan.volume ? (plan.volume / (1024 ** 3)).toFixed(0) + ' GB' : '1 GB'
-    }));
+    let filtered = PRE_PROCESSED_PLANS;
 
     if (searchQuery) {
       const lowerQuery = searchQuery.toLowerCase();
-      return data.filter(p => p.name.toLowerCase().includes(lowerQuery) || p.locationName.toLowerCase().includes(lowerQuery));
+      filtered = filtered.filter(p =>
+        p.name.toLowerCase().includes(lowerQuery) ||
+        p.locationName.toLowerCase().includes(lowerQuery)
+      );
+    } else if (activeRegion !== 'Global') {
+      filtered = filtered.filter(p =>
+        p.name.includes(activeRegion) ||
+        p.locationName.includes(activeRegion)
+      );
     }
-    if (activeRegion !== 'Global') {
-      return data.filter(p => p.name.includes(activeRegion) || p.locationName.includes(activeRegion));
-    }
-    return data;
+    return filtered;
   }, [searchQuery, activeRegion]);
 
   const displayedPlans = useMemo(() => allFilteredPlans.slice(0, visibleCount), [allFilteredPlans, visibleCount]);
@@ -141,9 +175,14 @@ export default function PlansScreen() {
     setModalVisible(true);
   }, []);
 
+  // Performance: Optimized key extractor
+  const renderPlan = useCallback(({ item }: { item: any }) => (
+    <PlanItem item={item} onBuy={handleBuy} />
+  ), [handleBuy]);
+
   return (
     <LinearGradient colors={Gradients.background} style={[styles.container, { paddingTop: insets.top }]}>
-      <TouchableWithoutFeedback onPress={() => { Keyboard.dismiss(); setShowSuggestions(false); }}>
+      <TouchableWithoutFeedback onPress={() => { Keyboard.dismiss(); }}>
         <View style={{ zIndex: 10 }}>
           <View style={styles.header}>
             <Text style={styles.title}>Data Plans</Text>
@@ -157,25 +196,33 @@ export default function PlansScreen() {
                 placeholderTextColor="#64748B"
                 style={styles.searchInput}
                 value={searchQuery}
-                onFocus={() => setShowSuggestions(true)}
-                onChangeText={setSearchQuery}
+                onChangeText={(text) => {
+                  setSearchQuery(text);
+                  setVisibleCount(ITEMS_PER_PAGE); // Reset count on search
+                }}
               />
             </BlurView>
           </View>
 
           {!searchQuery && (
-             <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.regionScroll}
-                // ✅ PROP IS NOW CORRECTLY PLACED
-                removeClippedSubviews={false}
-              >
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.regionScroll}
+              removeClippedSubviews={false}
+            >
               {REGIONS.map((region) => (
-                <Pressable key={region} onPress={() => setActiveRegion(region)} style={styles.regionOuter}>
-                   <View style={[styles.regionChip, activeRegion === region && styles.activeChip]}>
-                      <Text style={[styles.regionText, activeRegion === region && { color: '#000' }]}>{region}</Text>
-                   </View>
+                <Pressable
+                  key={region}
+                  onPress={() => {
+                    setActiveRegion(region);
+                    setVisibleCount(ITEMS_PER_PAGE); // Reset count
+                  }}
+                  style={styles.regionOuter}
+                >
+                  <View style={[styles.regionChip, activeRegion === region && styles.activeChip]}>
+                    <Text style={[styles.regionText, activeRegion === region && { color: '#000' }]}>{region}</Text>
+                  </View>
                 </Pressable>
               ))}
             </ScrollView>
@@ -184,16 +231,18 @@ export default function PlansScreen() {
       </TouchableWithoutFeedback>
 
       <FlatList
-        data={displayedPlans}
-        renderItem={({ item }) => <PlanItem item={item} onBuy={handleBuy} />}
-        keyExtractor={(item) => item.packageCode}
+        data={(isLoading ? [1, 2, 3, 4] : displayedPlans) as any[]}
+        renderItem={({ item }) => isLoading ? <PlanSkeleton /> : renderPlan({ item })}
+        keyExtractor={(item, index) => isLoading ? `skeleton-${index}` : item.packageCode}
         contentContainerStyle={styles.plans}
-        onEndReached={handleLoadMore}
-        onEndReachedThreshold={0.5}
-        removeClippedSubviews={true}
-        maxToRenderPerBatch={5}
-        initialNumToRender={8}
+        onEndReached={isLoading ? null : handleLoadMore}
+        onEndReachedThreshold={0.6}
+        // ... (rest of FlatList props)
+        removeClippedSubviews={false}
+        maxToRenderPerBatch={10}
+        initialNumToRender={10}
         windowSize={5}
+        updateCellsBatchingPeriod={50}
       />
 
       <PurchaseModal visible={isModalVisible} plan={selectedPlan} onClose={() => setModalVisible(false)} />
@@ -222,6 +271,7 @@ const styles = StyleSheet.create({
   /* --- NEW CARD STYLES --- */
   cardContainer: { marginBottom: 16 },
   cardBorder: { borderRadius: 24, padding: 1 }, // Creates gradient border
+  cardInnerWrapper: { borderRadius: 24, overflow: 'hidden' },
   cardContent: { borderRadius: 24, padding: 20, backgroundColor: 'rgba(15, 23, 42, 0.6)' },
 
   cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
@@ -235,7 +285,7 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     borderRadius: 6
   },
-  regionText: { color: '#2F66F6', fontSize: 10, fontWeight: '800', letterSpacing: 0.5 },
+  regionBadgeText: { color: '#2F66F6', fontSize: 10, fontWeight: '800', letterSpacing: 0.5 },
 
   priceGroup: { flexDirection: 'row', alignItems: 'flex-start' },
   currency: { color: '#00E5FF', fontSize: 14, fontWeight: '600', marginTop: 4, marginRight: 2 },
@@ -252,5 +302,29 @@ const styles = StyleSheet.create({
   buyButton: { marginTop: 20, borderRadius: 14, overflow: 'hidden' },
   buyGradient: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', paddingVertical: 14 },
   buyText: { color: '#FFF', fontSize: 14, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 1 },
-  arrow: { color: '#FFF', marginLeft: 8, fontSize: 16, fontWeight: '800' }
+  arrow: { color: '#FFF', marginLeft: 8, fontSize: 16, fontWeight: '800' },
+
+  /* Skeleton */
+  skeletonCard: {
+    height: 180,
+    borderRadius: 24,
+    backgroundColor: 'rgba(15, 23, 42, 0.4)',
+    marginBottom: 16,
+    overflow: 'hidden'
+  },
+  shimmer: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 24
+  }
 });
+
+// --- SKELETON COMPONENT ---
+const PlanSkeleton = () => (
+  <View style={styles.skeletonCard}>
+    <ShimmerPlaceholder
+      shimmerColors={['rgba(255,255,255,0.05)', 'rgba(255,255,255,0.1)', 'rgba(255,255,255,0.05)']}
+      style={styles.shimmer}
+    />
+  </View>
+);

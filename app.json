@@ -6,6 +6,7 @@
     "orientation": "portrait",
     "icon": "./assets/default.png",
     "userInterfaceStyle": "dark",
+    "backgroundColor": "#04070D",
     "scheme": "gesim",
     "splash": {
       "image": "./assets/splash.png",
@@ -26,7 +27,6 @@
       },
       "package": "com.gesim.wallet",
       "icon": "./assets/default.png",
-      "launchMode": "singleTask",
       "intentFilters": [
         {
           "action": "VIEW",

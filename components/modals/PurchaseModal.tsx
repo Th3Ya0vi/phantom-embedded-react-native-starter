@@ -7,6 +7,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { useSharedValue, useAnimatedStyle, withRepeat, withTiming, Easing, withSequence } from 'react-native-reanimated';
 import { usePrivy, useEmbeddedSolanaWallet } from '@privy-io/expo';
+import ConfettiCannon from 'react-native-confetti-cannon';
 
 import { useApiActions } from '@/hooks/useApiActions';
 import { useSession } from '@/lib/session/SessionContext';
@@ -112,11 +113,12 @@ export function PurchaseModal({ visible, onClose, plan }: PurchaseModalProps) {
   }, [visible, walletAddress]);
 
   // --- VALIDATION LOGIC ---
-  const planPriceUsdc = useMemo(() => (plan ? plan.price / 10000 : 0), [plan]);
-  // Gas check: usually around 0.001 - 0.005 SOL for token transfers
-  const hasEnoughSol = walletData.solBalance >= 0.001;
+  const planPriceUsdc = useMemo(() => (plan ? (plan.price * 1.4 / 10000) : 0), [plan]);
+  // Minimum SOL required for fees (~$0.50 worth)
+  const MIN_SOL_VALUE_USD = 0.5;
+  const hasEnoughSol = walletData.solValueUsd >= MIN_SOL_VALUE_USD;
   const hasEnoughUsdc = walletData.usdcBalance >= planPriceUsdc;
-  const canProceed = hasEnoughSol && hasEnoughUsdc;
+  const canProceed = hasEnoughUsdc && hasEnoughSol;
 
   const animatedGradientStyle = useAnimatedStyle(() => ({
     transform: [{ rotateZ: `${rotation.value}deg` }],
@@ -222,7 +224,7 @@ export function PurchaseModal({ visible, onClose, plan }: PurchaseModalProps) {
                       <Text style={styles.warningText}>• Add more USDC to cover the plan cost (${planPriceUsdc.toFixed(2)}).</Text>
                     )}
                     {!hasEnoughSol && (
-                      <Text style={styles.warningText}>• Add a small amount of SOL to cover Network Gas Fees.</Text>
+                      <Text style={styles.warningText}>• Min $0.50 worth of SOL required for network gas fees.</Text>
                     )}
                   </View>
                 )}
@@ -289,6 +291,16 @@ export function PurchaseModal({ visible, onClose, plan }: PurchaseModalProps) {
             )}
           </BlurView>
         </View>
+
+        {purchaseStep === 'SUCCESS' && (
+          <ConfettiCannon
+            count={200}
+            origin={{ x: -10, y: 0 }}
+            fadeOut={true}
+            fallSpeed={3000}
+            explosionSpeed={350}
+          />
+        )}
       </Modal>
 
       <ActivationModal

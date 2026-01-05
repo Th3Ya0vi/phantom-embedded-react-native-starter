@@ -3,11 +3,11 @@ import 'react-native-get-random-values';
 import { View, Text, StyleSheet, Image, Dimensions } from 'react-native'
 import { usePrivy } from '@privy-io/expo'
 import { Stack, useRouter, Redirect } from 'expo-router'
-import { ConnectButton } from '@/components/ConnectButton'
 import PrivyUI from '@/components/PrivyUI';
 import { Colors, Spacing, Typography } from '@/lib/theme'
 import { LinearGradient } from 'expo-linear-gradient'
 import { StatusBar } from 'expo-status-bar'
+import { useSession } from '@/lib/session/SessionContext'
 
 // Get screen dimensions for positioning background elements
 const { width, height } = Dimensions.get('window');
@@ -15,11 +15,20 @@ const { width, height } = Dimensions.get('window');
 const AppLogo = require('@/assets/default.png')
 
 export default function HomeScreen() {
-  const { user } = usePrivy()
+  const { user, isReady } = usePrivy()
+  const { isAuthenticated, user: sessionUser } = useSession()
   const router = useRouter()
 
-  // Redirect if already connected
+  // 1. Redirect if already connected via Privy
   if (user) {
+    return <Redirect href="/invite" />
+  }
+
+  // 2. Redirect if already authenticated via backend (fallback)
+  if (isAuthenticated) {
+    if (sessionUser?.inviteClaimed) {
+      return <Redirect href="/(tabs)" />
+    }
     return <Redirect href="/invite" />
   }
 
@@ -56,15 +65,18 @@ export default function HomeScreen() {
 
         <View style={styles.textContainer}>
           <Text style={styles.appName}>GeSIM</Text>
-          <Text style={styles.tagline}>Global Connectivity, Decentralized.</Text>
+          <Text style={styles.tagline}>Global Connectivity, Reimagined</Text>
           <Text style={styles.description}>
-            Access instant data plans in 190+ countries securely with your secure wallet.
-          </Text>
+            Designed for DeFI users, Privacy travelers, Journalists and anyone who values privacy</Text>
         </View>
 
 
-        <ConnectButton />
-        <PrivyUI />
+        <View style={styles.actionContainer}>
+          <PrivyUI />
+          <Text style={styles.footerText}>
+            By continuing, you agree to our Terms of Service.
+          </Text>
+        </View>
       </View>
     </View>
   )
@@ -113,17 +125,17 @@ const styles = StyleSheet.create({
     elevation: 10,
   },
   logoGlass: {
-    width: 140,
-    height: 140,
-    borderRadius: 30,
+    width: 180,
+    height: 180,
+    borderRadius: 48,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.1)',
   },
   logo: {
-    width: 80,
-    height: 80,
+    width: 160,
+    height: 160,
   },
 
   /* Text Styling */
@@ -160,7 +172,7 @@ const styles = StyleSheet.create({
     gap: Spacing.md,
   },
   footerText: {
-    color: Colors?.textMuted || '#666',
+    color: Colors?.textSecondary || '#666',
     fontSize: 12,
     marginTop: Spacing.lg,
   }

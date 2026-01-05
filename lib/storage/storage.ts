@@ -6,45 +6,34 @@ import * as SecureStore from 'expo-secure-store'
 
 export const storage = {
   // ----- User (non-sensitive)
-   setUser: async (user: any) => {
-     if (!user || typeof user !== 'object') {
-       console.warn('Storage.setUser received invalid user:', user)
-       return
-     }
+  setUser: async (user: any) => {
+    if (!user || typeof user !== 'object') {
+      console.warn('Storage.setUser received invalid user:', user)
+      return
+    }
+    await SecureStore.setItemAsync(
+      StorageKey.USER,
+      JSON.stringify(user)
+    )
+  },
 
-     await SecureStore.setItemAsync(
-       'user_session',
-       JSON.stringify(user)
-     )
-   },
+  getUser: async () => {
+    const userString = await SecureStore.getItemAsync(StorageKey.USER);
+    if (!userString) return null;
+    try {
+      return JSON.parse(userString);
+    } catch (e) {
+      return userString;
+    }
+  },
 
-
-
-   getUser: async () => {
-      // FIX: Use 'SecureStore' (the library)
-      const userString = await SecureStore.getItemAsync('user_session');
-
-      if (!userString) return null;
-
-      try {
-        return JSON.parse(userString);
-      } catch (e) {
-        return userString;
-      }
-    },
-
- async removeUser() {
-     // FIX: Use 'SecureStore' (the library)
-     await SecureStore.deleteItemAsync('user_session');
-     return asyncStorage.remove(StorageKey.USER);
-   },
-
+  async removeUser() {
+    await SecureStore.deleteItemAsync(StorageKey.USER);
+  },
 
   // ----- Tokens (sensitive)
   async getAccessToken() {
-    const token = await secureStorage.get(StorageKey.ACCESS_TOKEN);
-    console.log(`[STORAGE] Token retrieved: ${token ? 'EXISTS (starts with ' + token.substring(0, 10) + '...)' : 'MISSING'}`);
-    return token;
+    return SecureStore.getItemAsync(StorageKey.ACCESS_TOKEN);
   },
 
   setAccessToken: async (token: string) => {
@@ -52,35 +41,49 @@ export const storage = {
       console.warn('Storage.setAccessToken received invalid token:', token)
       return
     }
-console.log("STORAGE : Setting Token in Secure Store:", token);
     await SecureStore.setItemAsync(StorageKey.ACCESS_TOKEN, token)
   },
 
-
   async removeAccessToken() {
-    return secureStorage.remove(StorageKey.ACCESS_TOKEN)
+    await SecureStore.deleteItemAsync(StorageKey.ACCESS_TOKEN);
   },
 
-// ----- Refresh Token
-async getRefreshToken() {
-  return secureStorage.get('REFRESH_TOKEN')
-},
+  // ----- Refresh Token
+  async getRefreshToken() {
+    return SecureStore.getItemAsync(StorageKey.REFRESH_TOKEN);
+  },
 
-async setRefreshToken(token: string) {
-  return secureStorage.set('REFRESH_TOKEN', token)
-},
+  async setRefreshToken(token: string) {
+    if (!token) return;
+    await SecureStore.setItemAsync(StorageKey.REFRESH_TOKEN, token);
+  },
 
-async removeRefreshToken() {
-  return secureStorage.remove('REFRESH_TOKEN')
-},
-
+  async removeRefreshToken() {
+    await SecureStore.deleteItemAsync(StorageKey.REFRESH_TOKEN);
+  },
 
   // ----- Full logout
   async clearSession() {
+    console.log("[STORAGE] Clearing all session data...");
     await Promise.all([
-      secureStorage.remove('ACCESS_TOKEN'),
-      secureStorage.remove('REFRESH_TOKEN'),
-      asyncStorage.remove('USER'),
-    ])
+      SecureStore.deleteItemAsync(StorageKey.ACCESS_TOKEN),
+      SecureStore.deleteItemAsync(StorageKey.REFRESH_TOKEN),
+      SecureStore.deleteItemAsync(StorageKey.USER),
+      SecureStore.deleteItemAsync('user_session'), // Cleanup old key just in case
+    ]);
+    console.log("[STORAGE] Session data cleared.");
+  },
+
+  // ----- Navigation State
+  setLastPath: async (path: string) => {
+    await asyncStorage.set(StorageKey.LAST_PATH, path);
+  },
+
+  getLastPath: async (): Promise<string | null> => {
+    return asyncStorage.get<string>(StorageKey.LAST_PATH);
+  },
+
+  removeLastPath: async () => {
+    await asyncStorage.remove(StorageKey.LAST_PATH);
   }
 }
