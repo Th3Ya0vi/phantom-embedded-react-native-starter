@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { View, Text, StyleSheet, Modal, Pressable, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, StyleSheet, Modal, Pressable, ActivityIndicator } from 'react-native';
+import { useNotifications } from '@/lib/ui/NotificationContext';
 import { BlurView } from 'expo-blur';
 import { Colors, Spacing } from '@/lib/theme';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { useSharedValue, useAnimatedStyle, withRepeat, withTiming, Easing, withSequence } from 'react-native-reanimated';
-import { useAccounts, AddressType } from '@phantom/react-native-sdk';
+import { usePrivy, useEmbeddedSolanaWallet } from '@privy-io/expo';
 
 import { useApiActions } from '@/hooks/useApiActions';
 import { useSession } from '@/lib/session/SessionContext';
@@ -30,41 +31,55 @@ interface PurchaseModalProps {
 
 // --- SUB-COMPONENT FOR CHECKLIST ---
 const ChecklistItem = ({ label, status }: { label: string, status: 'pending' | 'in-progress' | 'done' }) => {
-    const opacity = useSharedValue(1);
+  const opacity = useSharedValue(1);
 
-    useEffect(() => {
-      if (status === 'in-progress') {
-        opacity.value = withRepeat(
-          withSequence(withTiming(0.6, { duration: 700 }), withTiming(1, { duration: 700 })),
-          -1,
-          true
-        );
-      } else {
-        opacity.value = withTiming(1);
-      }
-    }, [status]);
+  useEffect(() => {
+    if (status === 'in-progress') {
+      opacity.value = withRepeat(
+        withSequence(withTiming(0.6, { duration: 700 }), withTiming(1, { duration: 700 })),
+        -1,
+        true
+      );
+    } else {
+      opacity.value = withTiming(1);
+    }
+  }, [status]);
 
-    const animatedStyle = useAnimatedStyle(() => ({
-      opacity: status === 'in-progress' ? opacity.value : 1,
-    }));
+  const animatedStyle = useAnimatedStyle(() => ({
+    opacity: status === 'in-progress' ? opacity.value : 1,
+  }));
 
-    return (
-      <Animated.View style={[styles.checklistItem, animatedStyle]}>
-        <Text style={[styles.checklistIcon, status === 'done' && styles.checklistDoneIcon]}>
-          {status === 'done' ? '✓' : '●'}
-        </Text>
-        <Text style={[styles.checklistLabel, status === 'pending' && styles.checklistPendingLabel, status === 'done' && styles.checklistDoneLabel]}>
-          {label}
-        </Text>
-      </Animated.View>
-    );
+  return (
+    <Animated.View style={[styles.checklistItem, animatedStyle]}>
+      <Text style={[styles.checklistIcon, status === 'done' && styles.checklistDoneIcon]}>
+        {status === 'done' ? '✓' : '●'}
+      </Text>
+      <Text style={[styles.checklistLabel, status === 'pending' && styles.checklistPendingLabel, status === 'done' && styles.checklistDoneLabel]}>
+        {label}
+      </Text>
+    </Animated.View>
+  );
 };
 
 export function PurchaseModal({ visible, onClose, plan }: PurchaseModalProps) {
   const insets = useSafeAreaInsets();
   const { user } = useSession();
   const { processEsimPurchase, getWalletBalance } = useApiActions();
-  const { addresses } = useAccounts();
+  const { showAlert } = useNotifications();
+
+  const { user: privyUser } = usePrivy();
+  const wallet = useEmbeddedSolanaWallet();
+
+  // Helper to extract Solana address
+  const getSolanaAddress = (u: any) => {
+    if (!u) return null;
+    const solanaAccount = u.linked_accounts?.find(
+      (acc: any) => acc.type === 'wallet' && acc.chain_type === 'solana'
+    );
+    return solanaAccount?.address || null;
+  };
+
+  const walletAddress = getSolanaAddress(privyUser) || (wallet as any).address;
 
   // --- STATE ---
   const [purchaseStep, setPurchaseStep] = useState<'IDLE' | 'PAYING' | 'LOGGING' | 'PROVISIONING' | 'SUCCESS'>('IDLE');
@@ -77,17 +92,14 @@ export function PurchaseModal({ visible, onClose, plan }: PurchaseModalProps) {
   // --- FETCH BALANCES ---
   useEffect(() => {
     const loadBalances = async () => {
-      if (visible && addresses) {
+      if (visible && walletAddress) {
         setIsFetchingBalance(true);
-        const solAccount = addresses.find(a => a.addressType === AddressType.solana);
-        if (solAccount) {
-          const data = await getWalletBalance(solAccount.address);
-          setWalletData({
-            solBalance: data.solBalance || 0,
-            usdcBalance: data.usdcBalance || 0,
-            solValueUsd: data.solValue || 0
-          });
-        }
+        const data = await getWalletBalance(walletAddress);
+        setWalletData({
+          solBalance: data.solBalance || 0,
+          usdcBalance: data.usdcBalance || 0,
+          solValueUsd: data.solValue || 0
+        });
         setIsFetchingBalance(false);
       }
     };
@@ -97,11 +109,12 @@ export function PurchaseModal({ visible, onClose, plan }: PurchaseModalProps) {
       setPurchaseStep('IDLE');
       loadBalances();
     }
-  }, [visible, addresses]);
+  }, [visible, walletAddress]);
 
   // --- VALIDATION LOGIC ---
   const planPriceUsdc = useMemo(() => (plan ? plan.price / 10000 : 0), [plan]);
-  const hasEnoughSol = walletData.solValueUsd >= 0.25;
+  // Gas check: usually around 0.001 - 0.005 SOL for token transfers
+  const hasEnoughSol = walletData.solBalance >= 0.001;
   const hasEnoughUsdc = walletData.usdcBalance >= planPriceUsdc;
   const canProceed = hasEnoughSol && hasEnoughUsdc;
 
@@ -110,9 +123,10 @@ export function PurchaseModal({ visible, onClose, plan }: PurchaseModalProps) {
   }));
 
   const handlePayment = async () => {
-    if (!plan || !user?.id || !canProceed) return;
+    const userId = user?.id || user?._id;
+    if (!plan || !userId || !canProceed) return;
     try {
-      const response = await processEsimPurchase(plan, user.id, (stage) => {
+      const response = await processEsimPurchase(plan, userId.toString(), (stage) => {
         setPurchaseStep(stage);
       });
       if (response) {
@@ -125,7 +139,7 @@ export function PurchaseModal({ visible, onClose, plan }: PurchaseModalProps) {
       }
     } catch (error: any) {
       setPurchaseStep('IDLE');
-      Alert.alert("Purchase Failed", error.message || "An unexpected error occurred.");
+      showAlert({ title: "Purchase Failed", message: error.message || "An unexpected error occurred." });
     }
   };
 
@@ -143,61 +157,61 @@ export function PurchaseModal({ visible, onClose, plan }: PurchaseModalProps) {
             <View style={styles.handleBar} />
 
             {isProcessing ? (
-               /* --- 1. PROCESSING VIEW (CHECKLIST) --- */
-               <View style={styles.processingContainer}>
-                 <View style={styles.statusHeader}>
-                    <View style={styles.processingBadge}>
-                        <Text style={styles.tickIcon}>⚙️</Text>
-                    </View>
-                 </View>
-                 <Text style={styles.processingTitle}>Finalizing Your Plan</Text>
+              /* --- 1. PROCESSING VIEW (CHECKLIST) --- */
+              <View style={styles.processingContainer}>
+                <View style={styles.statusHeader}>
+                  <View style={styles.processingBadge}>
+                    <Text style={styles.tickIcon}>⚙️</Text>
+                  </View>
+                </View>
+                <Text style={styles.processingTitle}>Finalizing Your Plan</Text>
 
-                 <View style={styles.checklistContainer}>
-                   <ChecklistItem
-                     label="Processing Payment"
-                     status={purchaseStep === 'PAYING' ? 'in-progress' : 'done'}
-                   />
-                   <ChecklistItem
-                     label="Verifying Transaction"
-                     status={purchaseStep === 'PAYING' ? 'pending' : (purchaseStep === 'LOGGING' ? 'in-progress' : 'done')}
-                   />
-                   <ChecklistItem
-                     label="Allocating eSIM Profile"
-                     status={purchaseStep === 'PROVISIONING' ? 'in-progress' : (['PAYING', 'LOGGING'].includes(purchaseStep) ? 'pending' : 'done')}
-                   />
-                 </View>
+                <View style={styles.checklistContainer}>
+                  <ChecklistItem
+                    label="Processing Payment"
+                    status={purchaseStep === 'PAYING' ? 'in-progress' : 'done'}
+                  />
+                  <ChecklistItem
+                    label="Verifying Transaction"
+                    status={purchaseStep === 'PAYING' ? 'pending' : (purchaseStep === 'LOGGING' ? 'in-progress' : 'done')}
+                  />
+                  <ChecklistItem
+                    label="Allocating eSIM Profile"
+                    status={purchaseStep === 'PROVISIONING' ? 'in-progress' : (['PAYING', 'LOGGING'].includes(purchaseStep) ? 'pending' : 'done')}
+                  />
+                </View>
 
-                 {purchaseStep === 'SUCCESS' && (
-                   <Pressable style={styles.doneButton} onPress={() => { onClose(); setPurchaseStep('IDLE'); }}>
-                     <Text style={styles.doneButtonText}>VIEW ESIM</Text>
-                   </Pressable>
-                 )}
-               </View>
+                {purchaseStep === 'SUCCESS' && (
+                  <Pressable style={styles.doneButton} onPress={() => { onClose(); setPurchaseStep('IDLE'); }}>
+                    <Text style={styles.doneButtonText}>VIEW ESIM</Text>
+                  </Pressable>
+                )}
+              </View>
             ) : (
               /* --- 2. IDLE VIEW (DETAILS & BALANCES) --- */
               <>
                 <View style={styles.header}>
-                    <View>
-                        <Text style={styles.planName}>{plan.name}</Text>
-                        <Text style={styles.planRegion}>Global Coverage</Text>
-                    </View>
-                    <View style={styles.priceTag}>
-                        <Text style={styles.priceText}>${planPriceUsdc.toFixed(2)}</Text>
-                    </View>
+                  <View>
+                    <Text style={styles.planName}>{plan.name}</Text>
+                    <Text style={styles.planRegion}>Global Coverage</Text>
+                  </View>
+                  <View style={styles.priceTag}>
+                    <Text style={styles.priceText}>${planPriceUsdc.toFixed(2)}</Text>
+                  </View>
                 </View>
 
                 {/* --- WALLET BALANCE SECTION --- */}
                 <View style={styles.balanceSummary}>
-                    <Text style={styles.balanceLabel}>Your Balance</Text>
-                    <View style={styles.balanceRow}>
-                        <Text style={[styles.balanceValue, !hasEnoughUsdc && { color: '#FF4B4B' }]}>
-                            {walletData.usdcBalance.toFixed(2)} USDC
-                        </Text>
-                        <View style={styles.balanceDivider} />
-                        <Text style={[styles.balanceValue, !hasEnoughSol && { color: '#FF4B4B' }]}>
-                            {walletData.solBalance.toFixed(4)} SOL (${walletData.solValueUsd.toFixed(2)})
-                        </Text>
-                    </View>
+                  <Text style={styles.balanceLabel}>Your Balance</Text>
+                  <View style={styles.balanceRow}>
+                    <Text style={[styles.balanceValue, !hasEnoughUsdc && { color: '#FF4B4B' }]}>
+                      {walletData.usdcBalance.toFixed(2)} USDC
+                    </Text>
+                    <View style={styles.balanceDivider} />
+                    <Text style={[styles.balanceValue, !hasEnoughSol && { color: '#FF4B4B' }]}>
+                      {walletData.solBalance.toFixed(4)} SOL (${walletData.solValueUsd.toFixed(2)})
+                    </Text>
+                  </View>
                 </View>
 
                 {/* --- WARNING UI --- */}
@@ -205,17 +219,17 @@ export function PurchaseModal({ visible, onClose, plan }: PurchaseModalProps) {
                   <View style={styles.warningBox}>
                     <Text style={styles.warningTitle}>⚠️ Action Required</Text>
                     {!hasEnoughUsdc && (
-                        <Text style={styles.warningText}>• Add more USDC to cover the plan cost.</Text>
+                      <Text style={styles.warningText}>• Add more USDC to cover the plan cost (${planPriceUsdc.toFixed(2)}).</Text>
                     )}
                     {!hasEnoughSol && (
-                        <Text style={styles.warningText}>• Add at least $1.00 in SOL to cover Network Gas Fees.</Text>
+                      <Text style={styles.warningText}>• Add a small amount of SOL to cover Network Gas Fees.</Text>
                     )}
                   </View>
                 )}
 
                 <View style={styles.detailsGrid}>
-                    <DetailItem label="Data" value={`${volumeGB} GB`} icon="📊" />
-                    <DetailItem label="Validity" value={`${plan.duration} Days`} icon="⏳" />
+                  <DetailItem label="Data" value={`${volumeGB} GB`} icon="📊" />
+                  <DetailItem label="Validity" value={`${plan.duration} Days`} icon="⏳" />
                 </View>
 
                 {/* --- ACTION BUTTON --- */}
@@ -269,7 +283,7 @@ export function PurchaseModal({ visible, onClose, plan }: PurchaseModalProps) {
                 </Pressable>
 
                 <Pressable onPress={onClose} style={styles.cancelButton}>
-                    <Text style={styles.cancelText}>Cancel</Text>
+                  <Text style={styles.cancelText}>Cancel</Text>
                 </Pressable>
               </>
             )}
@@ -287,19 +301,19 @@ export function PurchaseModal({ visible, onClose, plan }: PurchaseModalProps) {
 }
 
 const DetailItem = ({ label, value, icon }: any) => (
-    <View style={styles.detailItem}>
-        <Text style={styles.detailIcon}>{icon}</Text>
-        <View>
-            <Text style={styles.detailLabel}>{label}</Text>
-            <Text style={styles.detailValue}>{value}</Text>
-        </View>
+  <View style={styles.detailItem}>
+    <Text style={styles.detailIcon}>{icon}</Text>
+    <View>
+      <Text style={styles.detailLabel}>{label}</Text>
+      <Text style={styles.detailValue}>{value}</Text>
     </View>
+  </View>
 );
 
 const styles = StyleSheet.create({
   overlay: { flex: 1, justifyContent: 'flex-end' },
   backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.7)' },
-  modalContent: { backgroundColor: '#0F172A', borderTopLeftRadius: 32, borderTopRightRadius: 32, padding: Spacing.lg, borderTopWidth: 1, borderColor: 'rgba(255,255,255,0.1)' ,overflow: 'hidden',},
+  modalContent: { backgroundColor: '#0F172A', borderTopLeftRadius: 32, borderTopRightRadius: 32, padding: Spacing.lg, borderTopWidth: 1, borderColor: 'rgba(255,255,255,0.1)', overflow: 'hidden', },
   handleBar: { width: 40, height: 4, backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 2, alignSelf: 'center', marginBottom: Spacing.lg },
 
   // Checklist Styles
@@ -341,7 +355,7 @@ const styles = StyleSheet.create({
   detailValue: { color: '#FFF', fontSize: 13, fontWeight: '700' },
 
   payButtonContainer: { position: 'relative', height: 60, borderRadius: 20, marginBottom: 12, justifyContent: 'center', alignItems: 'center', overflow: 'hidden' },
-  disabledButton: { opacity: 0.8 },
+  disabledButton: { opacity: 0.5 },
   animatedBorderContainer: { ...StyleSheet.absoluteFillObject, justifyContent: 'center', alignItems: 'center' },
   rotatingGradient: { width: '150%', height: '150%' },
   payButtonContent: {
@@ -361,10 +375,10 @@ const styles = StyleSheet.create({
   },
   cancelButton: { paddingVertical: 12, alignItems: 'center' },
   cancelText: {
-      color: '#94A3B8', // ✅ FIX: A much lighter, more visible Slate/Grey color
-      fontSize: 14,
-      fontWeight: '700', // Bolder to improve readability
-      letterSpacing: 0.5,
-    },
+    color: '#94A3B8', // ✅ FIX: A much lighter, more visible Slate/Grey color
+    fontSize: 14,
+    fontWeight: '700', // Bolder to improve readability
+    letterSpacing: 0.5,
+  },
   divider: { height: 1, backgroundColor: 'rgba(255,255,255,0.1)', marginVertical: 16 }
 });

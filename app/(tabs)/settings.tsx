@@ -1,32 +1,42 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, Pressable, ScrollView, Switch, Alert } from 'react-native';
+import { View, Text, StyleSheet, Pressable, ScrollView, Switch } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, Spacing, Typography, Gradients } from '@/lib/theme';
+import { usePrivy } from '@privy-io/expo';
 import { useAuthActions } from '@/hooks/useAuthActions';
+import { useNotifications } from '@/lib/ui/NotificationContext';
 
 export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
   const { logout } = useAuthActions();
+  const { showAlert } = useNotifications();
   const [isDarkMode, setIsDarkMode] = useState(true);
 
+  const { user: privyUser } = usePrivy();
+
+  const userName = (privyUser as any)?.email?.address?.split('@')[0] ||
+    (privyUser as any)?.linked_accounts?.find((a: any) => a.type === 'google_oauth')?.name?.split(' ')[0] ||
+    'Degen';
+
+  const userInitial = userName[0].toUpperCase();
+
   const handleLogout = () => {
-      Alert.alert(
-        "Disconnect Wallet",
-        "Are you sure you want to exit? This will end your session.",
-        [
-          { text: "Cancel", style: "cancel" },
-          // The `onPress` correctly calls the function from the hook
-          { text: "Disconnect", style: "destructive", onPress: logout },
-        ]
-      );
-    };
+    showAlert({
+      title: "Disconnect Wallet",
+      message: "Are you sure you want to exit? This will end your session.",
+      buttons: [
+        { text: "Cancel", style: "cancel" },
+        { text: "Disconnect", style: "destructive", onPress: logout },
+      ]
+    });
+  };
 
 
   return (
-    <LinearGradient colors={Gradients.background} style={styles.container}>
-     <ScrollView contentContainerStyle={[styles.content, { paddingTop: insets.top + 20 }]}>
+    <LinearGradient colors={Gradients.background as any} style={styles.container}>
+      <ScrollView contentContainerStyle={[styles.content, { paddingTop: insets.top + 20 }]}>
 
         <View style={styles.header}>
           <Text style={styles.title}>System</Text>
@@ -36,27 +46,27 @@ export default function SettingsScreen() {
         {/* Profile Glass Card */}
         <BlurView intensity={20} tint="dark" style={styles.profileCard}>
           <LinearGradient colors={['#2F66F6', '#00E5FF']} style={styles.avatar}>
-            <Text style={styles.avatarText}>D</Text>
+            <Text style={styles.avatarText}>{userInitial}</Text>
           </LinearGradient>
           <View style={{ flex: 1, marginLeft: 16 }}>
-            <Text style={styles.profileName}>DEGEN </Text>
+            <Text style={styles.profileName}>{userName.toUpperCase()}</Text>
             <View style={styles.verifiedBadge}>
               <Text style={styles.verifiedText}>Verified User</Text>
             </View>
           </View>
-      {/*}    <Pressable style={styles.editBtn}>
+          {/*}    <Pressable style={styles.editBtn}>
             <Text style={styles.editBtnText}>Edit</Text>
           </Pressable>*/}
         </BlurView>
 
         {/* Settings Groups */}
         <SettingsGroup title="Preferences">
-         {/*} <SettingsRow
+          {/*} <SettingsRow
             label="Dark Appearance"
             right={<Switch value={isDarkMode} onValueChange={setIsDarkMode} trackColor={{ true: '#2F66F6' }} />}
           /> */}
-          <SettingsRow label="Default Currency" value="USDC"  />
-          <SettingsRow label="Language" value="English"  />
+          <SettingsRow label="Default Currency" value="USDC" />
+          <SettingsRow label="Language" value="English" />
         </SettingsGroup>
 
         <SettingsGroup title="Knowledge Base">
@@ -72,7 +82,7 @@ export default function SettingsScreen() {
         </SettingsGroup>
 
         <Text style={styles.version}>GeSIM Protocol v1.0.42 • Built on Solana</Text>
-       </ScrollView>
+      </ScrollView>
     </LinearGradient>
   );
 }
@@ -105,18 +115,18 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   content: { padding: Spacing.lg, paddingBottom: 100 },
   header: { marginBottom: 32 },
-  title: { color: '#FFF', ...Typography.h1 },
-  subtitle: { color: '#94A3B8', ...Typography.body },
+  title: { ...Typography.h1, marginBottom: 32 },
+  subtitle: { ...Typography.body },
 
   /* Profile Card */
   profileCard: { flexDirection: 'row', alignItems: 'center', padding: 20, borderRadius: 24, marginBottom: 32, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
   avatar: { width: 56, height: 56, borderRadius: 28, justifyContent: 'center', alignItems: 'center' },
   avatarText: { color: '#FFF', fontSize: 24, fontWeight: '800' },
-  profileName: { color: '#FFF', fontSize: 20, fontWeight: '700' },
+  profileName: { color: Colors.textPrimary, fontSize: 20, fontWeight: '700' },
   verifiedBadge: { backgroundColor: 'rgba(0, 229, 255, 0.1)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, marginTop: 4, alignSelf: 'flex-start' },
   verifiedText: { color: '#00E5FF', fontSize: 10, fontWeight: '800', textTransform: 'uppercase' },
   editBtn: { backgroundColor: 'rgba(255,255,255,0.05)', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10 },
-  editBtnText: { color: '#94A3B8', fontSize: 12, fontWeight: '600' },
+  editBtnText: { color: Colors.textSecondary, fontSize: 12, fontWeight: '600' },
 
   /* Grouping */
   groupContainer: { marginBottom: 24 },

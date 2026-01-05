@@ -6,20 +6,15 @@
     "orientation": "portrait",
     "icon": "./assets/default.png",
     "userInterfaceStyle": "dark",
-    "scheme": "phantomwallet",
+    "scheme": "gesim",
     "splash": {
       "image": "./assets/splash.png",
       "resizeMode": "cover",
       "backgroundColor": "#2F66F6"
     },
-    "extra": {
-      "eas": {
-        "projectId": "c391ca2f-7589-4a6b-88aa-83c58eb0c937"
-      }
-  },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.gesim.phantomwallet",
+      "bundleIdentifier": "com.gesim.wallet",
       "appleTeamId": "837KBXFC63",
       "icon": "./assets/default.png"
     },
@@ -29,7 +24,7 @@
         "monochromeImage": "./assets/android-notification-icon.png",
         "backgroundColor": "#2F66F6"
       },
-      "package": "com.gesim.phantomwallet",
+      "package": "com.gesim.wallet",
       "icon": "./assets/default.png",
       "launchMode": "singleTask",
       "intentFilters": [
@@ -37,10 +32,13 @@
           "action": "VIEW",
           "data": [
             {
-              "scheme": "phantomwallet"
+              "scheme": "gesim"
             }
           ],
-          "category": ["BROWSABLE", "DEFAULT"]
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
         }
       ]
     },
@@ -56,7 +54,10 @@
       "router": {},
       "eas": {
         "projectId": "c391ca2f-7589-4a6b-88aa-83c58eb0c937"
-      }
+      },
+      "privyAppId": "cmjzlg3ve02kfky0ccf2wlfgf",
+      "privyClientId": "client-WY6UJTY593q4qae9qtadtjEavq3XG31DewG9dn2mJWfnK",
+      "passkeyAssociatedDomain": "https://gesimbackend.onrender.com"
     }
   }
 }

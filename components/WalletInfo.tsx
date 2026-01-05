@@ -1,88 +1,88 @@
 import React, { useEffect, useState } from 'react';
 import 'react-native-get-random-values'
-
 import {
   View,
   Text,
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
-  Alert,
   ScrollView,
-  Linking,
   Image,
+  Clipboard,
 } from 'react-native';
-import { 
-  useAccounts, 
-  useDisconnect, 
-  useSolana, 
-  useEthereum,
-  useModal,
-  AddressType,
-} from '@phantom/react-native-sdk';
-import { useRouter,useRootNavigationState } from 'expo-router';
+import { usePrivy, useEmbeddedSolanaWallet } from '@privy-io/expo';
+import { useRouter, useRootNavigationState } from 'expo-router';
 import { getBalance } from '@/lib/solana';
-import { truncateAddress, copyToClipboard } from '@/lib/utils';
+import { truncateAddress } from '@/lib/utils';
 import { colors } from '@/lib/theme';
+import { useApiActions } from '@/hooks/useApiActions';
+import { useNotifications } from '@/lib/ui/NotificationContext';
 
-// Import Phantom logo
-const PhantomLogo = require('@/assets/default.png');
+// Import App logo
+const AppLogo = require('@/assets/default.png');
 
 /**
- * WalletInfo component - Dashboard for connected multi-chain wallet
- * Displays Solana & Ethereum wallet addresses, balances, and signing capabilities
- * Updated for SDK v1.0.0-beta.26 with modal integration
+ * WalletInfo component - Dashboard for connected wallet
+ * Uses Privy Embedded Solana Wallet
  */
 export function WalletInfo() {
-  const { addresses, isConnected, walletId } = useAccounts();
-  const { disconnect, isDisconnecting } = useDisconnect();
-  const { solana, isAvailable: isSolanaAvailable } = useSolana();
-  const { ethereum, isAvailable: isEthereumAvailable } = useEthereum();
-  const modal = useModal();
+  const { user, logout } = usePrivy();
   const router = useRouter();
-    const rootNavigationState = useRootNavigationState();
-  
-  const [solBalance, setSolBalance] = useState<number | null>(null);
+  const rootNavigationState = useRootNavigationState();
+  const { getWalletBalance } = useApiActions();
+  const { showAlert } = useNotifications();
+
+  // Privy Embedded Wallet
+  const wallet = useEmbeddedSolanaWallet();
+  // Safe access to provider via casting if types are missing
+  const provider = (wallet as any).provider;
+
+  const [walletData, setWalletData] = useState({
+    solBalance: 0,
+    usdcBalance: 0,
+    totalValue: 0,
+    solValue: 0,
+  });
   const [isLoadingBalance, setIsLoadingBalance] = useState(false);
   const [isSigning, setIsSigning] = useState(false);
+  const [isDisconnecting, setIsDisconnecting] = useState(false);
 
-  const solanaAccount = addresses?.find(addr => addr.addressType === AddressType.solana);
-  const ethereumAccount = addresses?.find(addr => addr.addressType === AddressType.ethereum);
+  // Address logic
+  const getSolanaAddress = (u: any) => {
+    if (!u) return null;
+    const solanaAccount = u.linked_accounts?.find(
+      (acc: any) => acc.type === 'wallet' && acc.chain_type === 'solana'
+    );
+    return solanaAccount?.address || null;
+  };
+
+  const walletAddress = getSolanaAddress(user) || (wallet as any).address;
 
   // Redirect to home if disconnected
   useEffect(() => {
-
-  const navigationReady = rootNavigationState?.key;
-
-
-if (isConnected) {
-      return <Redirect href="/invite" />
+    const navigationReady = rootNavigationState?.key;
+    if (navigationReady && !user) {
+      const timer = setTimeout(() => {
+        router.replace('/');
+      }, 0);
+      return () => clearTimeout(timer);
     }
+  }, [user, rootNavigationState?.key]);
 
-  if (navigationReady && !isConnected) {
-    // FIX: Wrap the navigation in setTimeout
-    // This pushes the action to the end of the event loop,
-    // ensuring the Root Layout is fully mounted before we try to move.
-    const timer = setTimeout(() => {
-      router.replace('/');
-    }, 0);
-
-    return () => clearTimeout(timer); // Cleanup
-  }
-}, [isConnected, rootNavigationState?.key]);
-
-  // Fetch Solana balance when account is available
+  // Fetch balance
   useEffect(() => {
-    if (solanaAccount?.address) {
-      fetchBalance(solanaAccount.address);
+    if (walletAddress) {
+      fetchBalance(walletAddress);
     }
-  }, [solanaAccount?.address]);
+  }, [walletAddress]);
 
   const fetchBalance = async (address: string) => {
     setIsLoadingBalance(true);
     try {
-      const bal = await getBalance(address);
-      setSolBalance(bal);
+      const data = await getWalletBalance(address);
+      if (data) {
+        setWalletData(data);
+      }
     } catch (error) {
       console.error('Failed to fetch balance:', error);
     } finally {
@@ -91,57 +91,47 @@ if (isConnected) {
   };
 
   const handleCopy = async (address: string, chain: string) => {
-    await copyToClipboard(address);
-    Alert.alert('Copied!', `${chain} address copied to clipboard`);
+    Clipboard.setString(address);
+    showAlert({
+      title: 'Copied!',
+      message: `${chain} address copied to clipboard`,
+    });
   };
 
   const handleSignSolanaMessage = async () => {
-    if (!isSolanaAvailable || !solana) return;
+    if (!provider) return;
     setIsSigning(true);
     try {
-      const message = `Hello from Phantom SDK! Timestamp: ${Date.now()}`;
-      const signature = await solana.signMessage(message);
-      Alert.alert('Signed! ✓', `Signature: ${signature.signature.slice(0, 16)}...`);
+      const message = `Hello from GeSIM! Timestamp: ${Date.now()}`;
+      const encodedMessage = new TextEncoder().encode(message);
+      const signature = await provider.signMessage(encodedMessage);
+      showAlert({
+        title: 'Signed! ✓',
+        message: `Signature: ${signature.toString()}`,
+      });
     } catch (error: any) {
-      if (!error?.message?.includes('cancelled')) {
-        Alert.alert('Error', error?.message || 'Signing failed');
-      }
-    } finally {
-      setIsSigning(false);
-    }
-  };
-
-  const handleSignEthereumMessage = async () => {
-    if (!isEthereumAvailable || !ethereum || !ethereumAccount?.address) return;
-    setIsSigning(true);
-    try {
-      const message = `Hello from Phantom SDK! Timestamp: ${Date.now()}`;
-      const signature = await ethereum.signPersonalMessage(message, ethereumAccount.address);
-      Alert.alert('Signed! ✓', `Signature: ${signature.slice(0, 16)}...`);
-    } catch (error: any) {
-      if (!error?.message?.includes('cancelled')) {
-        Alert.alert('Error', error?.message || 'Signing failed');
-      }
+      showAlert({
+        title: 'Error',
+        message: error?.message || 'Signing failed',
+      });
     } finally {
       setIsSigning(false);
     }
   };
 
   const handleDisconnect = async () => {
+    setIsDisconnecting(true);
     try {
-      await disconnect();
+      await logout();
       router.replace('/');
     } catch (error) {
       console.error('Disconnect failed:', error);
+    } finally {
+      setIsDisconnecting(false);
     }
   };
 
-  const handleExploreDocs = () => {
-    Linking.openURL('https://docs.phantom.com');
-  };
-
-  // Loading state while fetching wallet info
-  if (!solanaAccount && !ethereumAccount) {
+  if (!user || !walletAddress) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color={colors.brand} />
@@ -154,100 +144,65 @@ if (isConnected) {
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
       {/* Header */}
       <View style={styles.header}>
-        <Image source={PhantomLogo} style={styles.logo} resizeMode="contain" />
-        <Text style={styles.welcomeText}>Welcome back</Text>
-        {walletId && (
-          <Text style={styles.walletId}>{walletId.slice(0, 8)}...{walletId.slice(-4)}</Text>
-        )}
+        <Text style={styles.welcomeText}>Welcome</Text>
+        <Text style={styles.walletId}>{user.id.slice(0, 10)}...</Text>
       </View>
 
-      {/* Account Settings Button - Opens SDK Modal */}
-      <TouchableOpacity
-        style={styles.manageButton}
-        onPress={() => modal.open()}
-      >
-        <Text style={styles.manageButtonText}>Account Settings</Text>
-      </TouchableOpacity>
-
       {/* Solana Card */}
-      {solanaAccount && (
-        <View style={styles.chainCard}>
-          <View style={styles.chainHeader}>
-            <View style={styles.chainBadge}>
-              <Text style={styles.chainIcon}>◎</Text>
-            </View>
-            <Text style={styles.chainName}>Solana</Text>
-            {isSolanaAvailable && <View style={styles.statusDot} />}
+      <View style={styles.chainCard}>
+        <View style={styles.chainHeader}>
+          <View style={styles.chainBadge}>
+            <Text style={styles.chainIcon}>◎</Text>
           </View>
-          
-          <TouchableOpacity 
-            style={styles.addressRow}
-            onPress={() => handleCopy(solanaAccount.address, 'Solana')}
-          >
-            <Text style={styles.addressLabel}>Address</Text>
-            <Text style={styles.addressValue}>{truncateAddress(solanaAccount.address, 6)}</Text>
-          </TouchableOpacity>
-
-          <View style={styles.balanceRow}>
-            <Text style={styles.balanceLabel}>Balance</Text>
-            <View style={styles.balanceValue}>
-              {isLoadingBalance ? (
-                <ActivityIndicator size="small" color={colors.brand} />
-              ) : (
-                <Text style={styles.balanceAmount}>{solBalance?.toFixed(4) ?? '0.0000'} SOL</Text>
-              )}
-              <TouchableOpacity onPress={() => fetchBalance(solanaAccount.address)}>
-                <Text style={styles.refreshLink}>↻</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-
-          <TouchableOpacity
-            style={styles.signButton}
-            onPress={handleSignSolanaMessage}
-            disabled={isSigning || !isSolanaAvailable}
-          >
-            {isSigning ? (
-              <ActivityIndicator color="#fff" size="small" />
-            ) : (
-              <Text style={styles.signButtonText}>Sign Message</Text>
-            )}
-          </TouchableOpacity>
+          <Text style={styles.chainName}>Solana</Text>
+          <View style={styles.statusDot} />
         </View>
-      )}
 
-      {/* Ethereum Card */}
-      {ethereumAccount && (
-        <View style={[styles.chainCard, styles.ethCard]}>
-          <View style={styles.chainHeader}>
-            <View style={[styles.chainBadge, styles.ethBadge]}>
-              <Text style={styles.chainIcon}>Ξ</Text>
-            </View>
-            <Text style={styles.chainName}>Ethereum</Text>
-            {isEthereumAvailable && <View style={[styles.statusDot, styles.ethDot]} />}
-          </View>
-          
-          <TouchableOpacity 
-            style={styles.addressRow}
-            onPress={() => handleCopy(ethereumAccount.address, 'Ethereum')}
-          >
-            <Text style={styles.addressLabel}>Address</Text>
-            <Text style={styles.addressValue}>{truncateAddress(ethereumAccount.address, 6)}</Text>
-          </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.addressRow}
+          onPress={() => handleCopy(walletAddress, 'Solana')}
+        >
+          <Text style={styles.addressLabel}>Address</Text>
+          <Text style={styles.addressValue}>{truncateAddress(walletAddress, 6)}</Text>
+        </TouchableOpacity>
 
-          <TouchableOpacity
-            style={[styles.signButton, styles.ethSignButton]}
-            onPress={handleSignEthereumMessage}
-            disabled={isSigning || !isEthereumAvailable}
-          >
-            {isSigning ? (
-              <ActivityIndicator color="#fff" size="small" />
+        <View style={styles.balanceRow}>
+          <Text style={styles.balanceLabel}>SOL Balance</Text>
+          <View style={styles.balanceValue}>
+            {isLoadingBalance ? (
+              <ActivityIndicator size="small" color={colors.brand} />
             ) : (
-              <Text style={styles.signButtonText}>Sign Message</Text>
+              <Text style={styles.balanceAmount}>{walletData.solBalance?.toFixed(4) ?? '0.0000'} SOL</Text>
             )}
-          </TouchableOpacity>
+          </View>
         </View>
-      )}
+
+        <View style={styles.balanceRow}>
+          <Text style={styles.balanceLabel}>USDC Balance</Text>
+          <View style={styles.balanceValue}>
+            {isLoadingBalance ? (
+              <ActivityIndicator size="small" color={colors.brand} />
+            ) : (
+              <Text style={styles.balanceAmount}>${walletData.usdcBalance?.toFixed(2) ?? '0.00'} USDC</Text>
+            )}
+            <TouchableOpacity onPress={() => fetchBalance(walletAddress)}>
+              <Text style={styles.refreshLink}>↻</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        <TouchableOpacity
+          style={styles.signButton}
+          onPress={handleSignSolanaMessage}
+          disabled={isSigning}
+        >
+          {isSigning ? (
+            <ActivityIndicator color="#fff" size="small" />
+          ) : (
+            <Text style={styles.signButtonText}>Sign Message</Text>
+          )}
+        </TouchableOpacity>
+      </View>
 
       {/* Actions */}
       <View style={styles.actions}>
@@ -261,10 +216,6 @@ if (isConnected) {
           ) : (
             <Text style={styles.logoutText}>Log Out</Text>
           )}
-        </TouchableOpacity>
-
-        <TouchableOpacity onPress={handleExploreDocs}>
-          <Text style={styles.docsLink}>Explore SDK →</Text>
         </TouchableOpacity>
       </View>
     </ScrollView>
@@ -285,7 +236,7 @@ const styles = StyleSheet.create({
   loadingText: {
     marginTop: 12,
     fontSize: 14,
-    color: colors.gray400,
+    color: colors.textSecondary,
   },
   header: {
     alignItems: 'center',
@@ -300,26 +251,13 @@ const styles = StyleSheet.create({
   welcomeText: {
     fontSize: 20,
     fontWeight: '600',
-    color: colors.ink,
+    color: colors.textPrimary,
   },
   walletId: {
     fontSize: 12,
-    color: colors.gray400,
+    color: colors.textSecondary,
     marginTop: 4,
     fontFamily: 'monospace',
-  },
-  manageButton: {
-    marginHorizontal: 16,
-    marginBottom: 16,
-    backgroundColor: colors.brand,
-    paddingVertical: 14,
-    borderRadius: 12,
-    alignItems: 'center',
-  },
-  manageButtonText: {
-    color: '#fff',
-    fontSize: 15,
-    fontWeight: '600',
   },
   chainCard: {
     marginHorizontal: 16,
@@ -330,9 +268,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.gray200,
   },
-  ethCard: {
-    borderColor: colors.blue + '30',
-  },
   chainHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -342,21 +277,18 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 8,
-    backgroundColor: colors.lavender + '20',
+    backgroundColor: (colors.lavender || '#E6E6FA') + '20',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  ethBadge: {
-    backgroundColor: colors.blue + '20',
-  },
   chainIcon: {
     fontSize: 16,
-    color: colors.ink,
+    color: colors.textPrimary,
   },
   chainName: {
     fontSize: 16,
     fontWeight: '600',
-    color: colors.ink,
+    color: colors.textPrimary,
     marginLeft: 10,
     flex: 1,
   },
@@ -365,9 +297,6 @@ const styles = StyleSheet.create({
     height: 8,
     borderRadius: 4,
     backgroundColor: colors.green,
-  },
-  ethDot: {
-    backgroundColor: colors.blue,
   },
   addressRow: {
     flexDirection: 'row',
@@ -379,11 +308,11 @@ const styles = StyleSheet.create({
   },
   addressLabel: {
     fontSize: 13,
-    color: colors.gray400,
+    color: colors.textSecondary,
   },
   addressValue: {
     fontSize: 13,
-    color: colors.ink,
+    color: colors.textPrimary,
     fontFamily: 'monospace',
   },
   balanceRow: {
@@ -394,7 +323,7 @@ const styles = StyleSheet.create({
   },
   balanceLabel: {
     fontSize: 13,
-    color: colors.gray400,
+    color: colors.textSecondary,
   },
   balanceValue: {
     flexDirection: 'row',
@@ -404,7 +333,7 @@ const styles = StyleSheet.create({
   balanceAmount: {
     fontSize: 15,
     fontWeight: '600',
-    color: colors.ink,
+    color: colors.textPrimary,
   },
   refreshLink: {
     fontSize: 16,
@@ -412,13 +341,10 @@ const styles = StyleSheet.create({
   },
   signButton: {
     marginTop: 12,
-    backgroundColor: colors.lavender,
+    backgroundColor: colors.lavender || '#E6E6FA',
     paddingVertical: 12,
     borderRadius: 10,
     alignItems: 'center',
-  },
-  ethSignButton: {
-    backgroundColor: colors.blue,
   },
   signButtonText: {
     color: '#fff',
@@ -439,13 +365,8 @@ const styles = StyleSheet.create({
     borderColor: colors.gray200,
   },
   logoutText: {
-    color: colors.ink,
+    color: colors.textPrimary,
     fontSize: 14,
-    fontWeight: '500',
-  },
-  docsLink: {
-    fontSize: 14,
-    color: colors.brand,
     fontWeight: '500',
   },
 });

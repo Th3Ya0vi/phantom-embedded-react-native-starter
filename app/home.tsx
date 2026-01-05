@@ -1,9 +1,10 @@
 import { useEffect } from 'react'
 import 'react-native-get-random-values';
 import { View, Text, StyleSheet, Image, Dimensions } from 'react-native'
-import { useAccounts } from '@phantom/react-native-sdk'
+import { usePrivy } from '@privy-io/expo'
 import { Stack, useRouter, Redirect } from 'expo-router'
 import { ConnectButton } from '@/components/ConnectButton'
+import PrivyUI from '@/components/PrivyUI';
 import { Colors, Spacing, Typography } from '@/lib/theme'
 import { LinearGradient } from 'expo-linear-gradient'
 import { StatusBar } from 'expo-status-bar'
@@ -11,14 +12,14 @@ import { StatusBar } from 'expo-status-bar'
 // Get screen dimensions for positioning background elements
 const { width, height } = Dimensions.get('window');
 
-const PhantomLogo = require('@/assets/default.png')
+const AppLogo = require('@/assets/default.png')
 
 export default function HomeScreen() {
-  const { isConnected } = useAccounts()
+  const { user } = usePrivy()
   const router = useRouter()
 
   // Redirect if already connected
-  if (isConnected) {
+  if (user) {
     return <Redirect href="/invite" />
   }
 
@@ -49,7 +50,7 @@ export default function HomeScreen() {
             colors={['rgba(255,255,255,0.1)', 'rgba(255,255,255,0.02)']}
             style={styles.logoGlass}
           >
-            <Image source={PhantomLogo} style={styles.logo} resizeMode="contain" />
+            <Image source={AppLogo} style={styles.logo} resizeMode="contain" />
           </LinearGradient>
         </View>
 
@@ -57,12 +58,13 @@ export default function HomeScreen() {
           <Text style={styles.appName}>GeSIM</Text>
           <Text style={styles.tagline}>Global Connectivity, Decentralized.</Text>
           <Text style={styles.description}>
-            Access instant data plans in 190+ countries securely with your Phantom wallet.
+            Access instant data plans in 190+ countries securely with your secure wallet.
           </Text>
         </View>
 
 
-          <ConnectButton />
+        <ConnectButton />
+        <PrivyUI />
       </View>
     </View>
   )

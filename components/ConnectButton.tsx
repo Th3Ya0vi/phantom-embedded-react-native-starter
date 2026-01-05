@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import 'react-native-get-random-values';
 import {
   View,
@@ -7,53 +7,96 @@ import {
   StyleSheet,
   Image,
 } from 'react-native';
-import { useModal, useAccounts } from '@phantom/react-native-sdk';
+import { useLoginWithOAuth, usePrivy } from '@privy-io/expo';
 import { colors } from '@/lib/theme';
 
-// Use the light.png - lavender ghost on transparent background
-const PhantomGhost = require('@/assets/light.png');
-
 /**
- * ConnectButton component handles Phantom wallet authentication
- * Uses the new SDK modal (v1.0.0-beta.26) for wallet connection
- * Modal supports Google and Apple authentication
+ * ConnectButton component handles Privy authentication
  */
 export function ConnectButton() {
-  const modal = useModal();
-  const { isConnected } = useAccounts();
+  const { user } = usePrivy();
+  const { login, state } = useLoginWithOAuth();
+  const [error, setError] = useState<string | null>(null);
 
-  // Auto-open modal when component mounts (if not connected)
+  // Monitor OAuth state changes
   useEffect(() => {
-    if (!isConnected && !modal.isOpened) {
-      // Small delay to ensure smooth transition
-      const timer = setTimeout(() => {
-        modal.open();
-      }, 500);
+    console.log('[ConnectButton] OAuth state changed:', state.status);
+
+    if (state.status === 'error') {
+      const errorMsg = `OAuth Error: ${state.error?.message || 'Unknown error'}`;
+      console.error('[ConnectButton]', errorMsg);
+      setError(errorMsg);
+    } else if (state.status === 'initial') {
+      setError(null);
+    } else if (state.status === 'loading') {
+      console.log('[ConnectButton] OAuth in progress...');
+    } else if (state.status === 'done') {
+      console.log('[ConnectButton] OAuth completed!');
+      setError(null);
+    }
+  }, [state]);
+
+  // Clear error after 10 seconds
+  useEffect(() => {
+    if (error) {
+      const timer = setTimeout(() => setError(null), 10000);
       return () => clearTimeout(timer);
     }
-  }, []);
+  }, [error]);
 
-  // Hide button if already connected
-  if (isConnected) {
+  const handleLogin = async () => {
+    try {
+      console.log('[ConnectButton] Starting Google OAuth login...');
+      console.log('[ConnectButton] Expected redirect URI: gesim://privy-oauth');
+      setError(null);
+
+      await login({
+        provider: 'google',
+        redirectUri: 'privy-oauth' // Path only, SDK adds scheme
+      });
+
+      console.log('[ConnectButton] Login call completed');
+    } catch (e: any) {
+      const errorMsg = e?.message || 'Login failed';
+      console.error('[ConnectButton] Login error:', errorMsg, e);
+      setError(errorMsg);
+    }
+  };
+
+  if (user) {
     return null;
   }
 
   return (
     <View style={styles.container}>
-      {/* Login button - clean minimal design with Phantom ghost */}
       <TouchableOpacity
         style={styles.button}
-        onPress={() => modal.open()}
+        onPress={handleLogin}
         activeOpacity={0.85}
+        disabled={state.status === 'loading'}
       >
-        <Image source={PhantomGhost} style={styles.ghost} resizeMode="contain" />
-        <Text style={styles.buttonText}>Login with Phantom</Text>
+        <Text style={styles.buttonText}>
+          {state.status === 'loading' ? 'Logging in...' : 'Login with Google'}
+        </Text>
       </TouchableOpacity>
 
-      {/* Info text about available providers */}
       <Text style={styles.infoText}>
-        Sign in with Google or Apple
+        Sign in securely with Privy
       </Text>
+
+      {/* Error Display */}
+      {error && (
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorText}>❌ {error}</Text>
+        </View>
+      )}
+
+      {/* Debug Info */}
+      {__DEV__ && (
+        <View style={styles.debugContainer}>
+          <Text style={styles.debugText}>OAuth State: {state.status}</Text>
+        </View>
+      )}
     </View>
   );
 }
@@ -62,7 +105,7 @@ const styles = StyleSheet.create({
   container: {
     width: '100%',
     maxWidth: 300,
-    gap: 16,
+    gap: 12,
     alignItems: 'center',
   },
   button: {
@@ -75,22 +118,16 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     backgroundColor: colors.paper,
     borderWidth: 2,
-    borderColor: colors.lavender,
-    // Subtle shadow for depth
-    shadowColor: colors.lavender,
+    borderColor: colors.lavender || '#E6E6FA',
+    shadowColor: colors.lavender || '#E6E6FA',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.2,
     shadowRadius: 12,
     elevation: 4,
   },
-  ghost: {
-    width: 32,
-    height: 32,
-    marginRight: 12,
-  },
   buttonText: {
-    color: colors.ink,
-    fontSize: 17,
+    color: colors.textPrimary || colors.ink,
+    fontSize: 16,
     fontWeight: '600',
     letterSpacing: 0.3,
   },
@@ -98,5 +135,32 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: colors.gray400,
     textAlign: 'center',
+    marginTop: 4,
+  },
+  errorContainer: {
+    backgroundColor: 'rgba(255, 59, 48, 0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 59, 48, 0.3)',
+    borderRadius: 12,
+    padding: 12,
+    marginTop: 12,
+    width: '100%',
+  },
+  errorText: {
+    color: '#ff3b30',
+    fontSize: 12,
+    textAlign: 'center',
+    fontWeight: '500',
+  },
+  debugContainer: {
+    marginTop: 8,
+    padding: 8,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderRadius: 8,
+  },
+  debugText: {
+    color: colors.textSecondary,
+    fontSize: 11,
+    fontFamily: 'monospace',
   },
 });

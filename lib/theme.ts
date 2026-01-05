@@ -14,6 +14,7 @@ const baseColors = {
   gray100: '#f3f4f6',
   gray200: '#e5e7eb',
   gray400: '#9ca3af',
+  lavender: '#E6E6FA',
 
   // Dark Mode Bases
   darkBg: '#000000',
@@ -24,6 +25,9 @@ const baseColors = {
 
 // 2. Export 'Colors' (Capitalized) to match your app components
 export const colors = {
+  // Keep lowercase aliases for backward compatibility if needed
+  ...baseColors,
+
   // Brand
   primary: baseColors.blue,
   brand: baseColors.brand,
@@ -35,16 +39,13 @@ export const colors = {
 
   // Text
   textPrimary: baseColors.darkText,
-  textSecondary: baseColors.darkTextSec,
-  textMuted: '#666666',
+  textSecondary: '#CBD5E1', // Slate 300 (Much brighter than Slate 400)
+  textMuted: '#94A3B8', // Slate 400 (Readable, used for less important info)
 
   // UI
   border: '#2A2A2A',
   error: baseColors.coral,
   success: baseColors.green,
-
-  // Keep lowercase aliases for backward compatibility if needed
-  ...baseColors
 };
 
 // 3. Export Spacing
@@ -95,7 +96,7 @@ export const Colors = {
   primary: '#2F66F6', // Brand Blue
   accent: '#00E5FF', // Electric Cyan
   textPrimary: '#FFFFFF',
-  textSecondary: '#94A3B8', // Slate grey
+  textSecondary: '#CBD5E1', // Slate 300
   error: '#FF4B4B',
   success: '#00C853'
 };
@@ -104,8 +105,7 @@ export const Gradients = {
   main: ['#04070D', '#0F172A'], // Background depth
   primaryGlow: ['#2F66F6', '#00E5FF'], // For buttons/active states
   glass: ['rgba(255, 255, 255, 0.1)', 'rgba(255, 255, 255, 0.03)'],
-  background:  ['#04070D', '#0F172A'],
-  primaryGlow: ['#2F66F6', '#00E5FF'],
+  background: ['#04070D', '#0F172A'],
 };
 
 export const GlassStyle = {

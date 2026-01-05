@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Text, StyleSheet, Modal, Pressable, Alert } from 'react-native';
+import { View, Text, StyleSheet, Modal, Pressable } from 'react-native';
+import { useNotifications } from '@/lib/ui/NotificationContext';
 import * as Clipboard from 'expo-clipboard';
 import QRCode from 'react-native-qrcode-svg';
 import { BlurView } from 'expo-blur';
@@ -13,6 +14,7 @@ interface ActivationModalProps {
 }
 
 export function ActivationModal({ visible, onClose, profile }: ActivationModalProps) {
+  const { showAlert } = useNotifications();
   if (!profile) return null;
   const activationCode = profile?.ac || "";
   const iccid = profile?.iccid || "Not Available";
@@ -20,7 +22,7 @@ export function ActivationModal({ visible, onClose, profile }: ActivationModalPr
 
   const copyToClipboard = async (text: string) => {
     await Clipboard.setStringAsync(text);
-    Alert.alert('Copied', 'Activation code saved to clipboard.');
+    showAlert({ title: 'Copied', message: 'Activation code saved to clipboard.' });
   };
 
   return (
@@ -40,14 +42,14 @@ export function ActivationModal({ visible, onClose, profile }: ActivationModalPr
             <View style={styles.qrGlow} />
             <View style={styles.qrBackground}>
 
-                {activationCode ? (
-                  <QRCode value={activationCode} size={180} />
-                ) : (
-                  <View style={styles.errorContainer}>
-                    <Text style={styles.errorText}>QR Code not available.</Text>
-                  </View>
-                )}
-              </View>
+              {activationCode ? (
+                <QRCode value={activationCode} size={180} />
+              ) : (
+                <View style={styles.errorContainer}>
+                  <Text style={styles.errorText}>QR Code not available.</Text>
+                </View>
+              )}
+            </View>
           </View>
 
           <View style={styles.manualBox}>
@@ -95,9 +97,11 @@ const styles = StyleSheet.create({
   qrWrapper: { position: 'relative', marginBottom: 30 },
   qrGlow: {
     position: 'absolute', top: -10, left: -10, right: -10, bottom: -10,
-    backgroundColor: '#2F66F6', opacity: 0.15, borderRadius: 20, blurRadius: 20
+    backgroundColor: '#2F66F6', opacity: 0.15, borderRadius: 20
   },
   qrBackground: { backgroundColor: '#FFF', padding: 12, borderRadius: 16 },
+  errorContainer: { padding: 20, alignItems: 'center' },
+  errorText: { color: '#FF4B4B', fontSize: 14, fontWeight: '600' },
   manualBox: {
     width: '100%', backgroundColor: 'rgba(30, 41, 59, 0.5)', padding: 16,
     borderRadius: 16, marginBottom: 24, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center'

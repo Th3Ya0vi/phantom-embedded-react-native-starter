@@ -1,9 +1,7 @@
-import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
   StyleSheet,
-  Alert,
   Pressable,
   ScrollView,
   RefreshControl,
@@ -21,8 +19,10 @@ import { BlurView } from 'expo-blur';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { createShimmerPlaceholder } from 'react-native-shimmer-placeholder';
-import { useAccounts, AddressType } from '@phantom/react-native-sdk'; // For wallet address
+import { usePrivy, useEmbeddedSolanaWallet } from '@privy-io/expo'; // For wallet address
 import * as Clipboard from 'expo-clipboard';
+import { useNotifications } from '@/lib/ui/NotificationContext';
+import React, { useState, useEffect, useCallback } from 'react';
 
 import {
   Colors as ThemeColors,
@@ -35,13 +35,13 @@ import { useSession } from '@/lib/session/SessionContext';
 import { useApiActions } from '@/hooks/useApiActions';
 import { PurchaseModal } from '@/components/modals/PurchaseModal';
 import { ActivationModal } from '@/components/modals/ActivationModal';
-import featuredPlansData from '@/lib/data/featuredPlans.json';
+const featuredPlansData = require('@/lib/data/featuredPlans.json');
 
 const ShimmerPlaceholder = createShimmerPlaceholder(LinearGradient);
 
-if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
-  UIManager.setLayoutAnimationEnabledExperimental(true);
-}
+// if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+//   UIManager.setLayoutAnimationEnabledExperimental(true);
+// }
 
 // --- FALLBACKS ---
 const Colors = ThemeColors || { primary: '#2F66F6', textPrimary: '#FFFFFF', textSecondary: '#94A3B8' };
@@ -54,26 +54,40 @@ const Gradients = {
 export default function DashboardScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { user } = useSession();
-  const { handleGetUserSubscriptions, handleUsageCheck, handleCancelEsimProfile,getWalletBalance } = useApiActions();
+  const { user: sessionUser } = useSession(); // Renamed to avoid conflict if we used usePrivy's user here, but dashboard mainly uses session user for logic.
+  // Actually, let's use Privy for wallet access
+  const { user: privyUser } = usePrivy();
+  const wallet = useEmbeddedSolanaWallet();
 
-    //Solana wallet Addresses
-  const { addresses } = useAccounts(); // Get connected accounts
-  const solanaAccount = addresses?.find(addr => addr.addressType === AddressType.solana);
-  const walletAddress = solanaAccount?.address;
+  // Helper to extract Solana address from Privy user
+  const getSolanaAddress = (u: any) => {
+    if (!u) return null;
+    const solanaAccount = u.linked_accounts?.find(
+      (acc: any) => acc.type === 'wallet' && acc.chain_type === 'solana'
+    );
+    return solanaAccount?.address || null;
+  };
+
+  const walletAddress = getSolanaAddress(privyUser) || (wallet as any).address;
+
+  const { handleGetUserSubscriptions, handleUsageCheck, handleCancelEsimProfile, getWalletBalance } = useApiActions();
+  const { showAlert } = useNotifications();
+
+  // Replaces the old useAccounts logic
+  const user = sessionUser; // Keep existing user reference for subscription logic logic downstream
 
   // --- REWARDS STATE ---
-    const [isRewardsModalVisible, setRewardsModalVisible] = useState(false);
-    const [earnedCoins, setEarnedCoins] = useState(1250); // Example total coins
-    const [rewardActivities, setRewardActivities] = useState<RewardActivity[]>([ // Example activity data
-      { id: '1', title: 'First Purchase', points: 1000 },
-      { id: '2', title: 'Daily Login Bonus', points: 50 },
-      { id: '3', title: 'Referral Bonus', points: 200 },
-    ]);
+  const [isRewardsModalVisible, setRewardsModalVisible] = useState(false);
+  const [earnedCoins, setEarnedCoins] = useState(1250); // Example total coins
+  const [rewardActivities, setRewardActivities] = useState<RewardActivity[]>([ // Example activity data
+    { id: '1', title: 'First Purchase', points: 1000 },
+    { id: '2', title: 'Daily Login Bonus', points: 50 },
+    { id: '3', title: 'Referral Bonus', points: 200 },
+  ]);
 
 
   // Add state for wallet balance
-const [walletData, setWalletData] = useState({ totalValue: 0, solBalance: 0, usdcBalance: 0 });  // --- STATE MANAGEMENT ---
+  const [walletData, setWalletData] = useState({ totalValue: 0, solBalance: 0, usdcBalance: 0 });  // --- STATE MANAGEMENT ---
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [subscriptions, setSubscriptions] = useState<any[]>([]);
@@ -92,18 +106,18 @@ const [walletData, setWalletData] = useState({ totalValue: 0, solBalance: 0, usd
   const fetchData = useCallback(async () => {
 
     const userId = user?.id || user?._id;
-      const token = await storage.getAccessToken();
+    const token = await storage.getAccessToken();
 
     if (!(userId) || !(token)) {
       console.log("[DASHBOARD] Skipping fetch: No session or token.");
-          setSubscriptions([]);
-          setLoading(false);
-          return;
+      setSubscriptions([]);
+      setLoading(false);
+      return;
     }
     try {
-        setLoading(true);
+      setLoading(true);
       const subsResponse = await handleGetUserSubscriptions(userId);
-        console.log("[DASHBOARD] Subscriptions received:", subsResponse);
+      console.log("[DASHBOARD] Subscriptions received:", subsResponse);
       const rawSubs = Array.isArray(subsResponse) ? subsResponse : subsResponse?.data || [];
       const activeSubs = rawSubs
         .filter((s: any) => s && s.esimTranNo && !['CANCEL', 'SUSPEND', 'DELETED'].includes(s.esimStatus))
@@ -124,25 +138,25 @@ const [walletData, setWalletData] = useState({ totalValue: 0, solBalance: 0, usd
         setSubscriptions([]);
       }
     } catch (error: any) {
-              // ✅ SPECIFIC DEBUGGING FOR 404
-              if (error.response?.status === 404) {
-                  console.warn("[DASHBOARD] 404 Received: This user likely has no active plans yet.");
-                  setSubscriptions([]); // Gracefully handle as "No Plans"
-              } else {
-                  console.error("[DASHBOARD] Fetch Chain Failed:", error.message);
-              }
+      // ✅ SPECIFIC DEBUGGING FOR 404
+      if (error.response?.status === 404) {
+        console.warn("[DASHBOARD] 404 Received: This user likely has no active plans yet.");
+        setSubscriptions([]); // Gracefully handle as "No Plans"
+      } else {
+        console.error("[DASHBOARD] Fetch Chain Failed:", error.message);
+      }
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
   }, [user]);
 
-// 2. Create the handler function for the button
+  // 2. Create the handler function for the button
   const handleCancelPlan = (esimTranNo: string, iccid: string) => {
-    Alert.alert(
-      "Cancel Plan",
-      "Are you sure you want to permanently cancel this eSIM? This action cannot be undone.",
-      [
+    showAlert({
+      title: "Cancel Plan",
+      message: "Are you sure you want to permanently cancel this eSIM? This action cannot be undone.",
+      buttons: [
         { text: "Dismiss", style: "cancel" },
         {
           text: "Confirm Cancel",
@@ -150,30 +164,30 @@ const [walletData, setWalletData] = useState({ totalValue: 0, solBalance: 0, usd
           onPress: async () => {
             try {
               setLoading(true); // Show a loading state
-              await handleCancelEsimProfile(esimTranNo,iccid);
+              await handleCancelEsimProfile(esimTranNo, iccid);
               // Refresh the data to show the card has been removed
               await fetchData();
             } catch (error) {
               console.error("Failed to cancel plan:", error);
-              Alert.alert("Error", "Could not cancel the plan. Please try again.");
+              showAlert({ title: "Error", message: "Could not cancel the plan. Please try again." });
             } finally {
               setLoading(false);
             }
           },
         },
       ]
-    );
+    });
   };
-const copyAddress = async () => {
+  const copyAddress = async () => {
     if (!walletAddress) return;
     await Clipboard.setStringAsync(walletAddress);
-    Alert.alert(
-                  'Copied',
-                  'Address copied to clipboard!\n\n⚠️ Only transfer SOL & USDC tokens to this address.'
-                );
+    showAlert({
+      title: 'Copied',
+      message: 'Address copied to clipboard!\n\n⚠️ Only transfer SOL & USDC tokens to this address.'
+    });
   };
 
-const truncatedAddress = walletAddress
+  const truncatedAddress = walletAddress
     ? `${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}`
     : 'Not Connected';
 
@@ -205,22 +219,22 @@ const truncatedAddress = walletAddress
     setQrModalVisible(true);
   };
 
- // This function will fetch the wallet's token balance
+  // This function will fetch the wallet's token balance
   const fetchWalletData = useCallback(async () => {
-        if (!walletAddress) return;
-        const data = await getWalletBalance(walletAddress);
-        setWalletData(data);
-    }, [walletAddress, getWalletBalance]);
+    if (!walletAddress) return;
+    const data = await getWalletBalance(walletAddress);
+    setWalletData(data);
+  }, [walletAddress, getWalletBalance]);
 
 
 
   useEffect(() => {
     // This effect runs when the component mounts and if the user logs in/out.
     if (user?.id) {
-        fetchData();
+      fetchData();
     }
     if (walletAddress) {
-        fetchWalletData();
+      fetchWalletData();
     }
   }, [user?.id, walletAddress]); // <-- DEPENDS ON DATA, NOT FUNCTIONS
 
@@ -252,49 +266,53 @@ const truncatedAddress = walletAddress
   );
 
   return (
-    <LinearGradient colors={Gradients.background} style={[styles.container, { paddingTop: insets.top }]}>
+    <LinearGradient colors={Gradients.background as any} style={[styles.container, { paddingTop: insets.top }]}>
       <ScrollView
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#00E5FF" />}
       >
         {/* ✅ UPDATED WELCOME SECTION */}
-               <View style={styles.headerRow}>
-                 {/* Greeting on the left */}
+        <View style={styles.headerRow}>
+          {/* Greeting on the left */}
 
-        <View style={styles.greeting}>
-          <Text style={styles.greetingText}>Hi {user?.email?.split('@')[0] || 'Degen'} 👋</Text>
-          <Text style={styles.subGreeting}>GeSIM Control Center</Text>
+          <View style={styles.greeting}>
+            <Text style={styles.greetingText}>
+              Hi {(privyUser as any)?.email?.address?.split('@')[0] ||
+                (privyUser as any)?.linked_accounts?.find((a: any) => a.type === 'google_oauth')?.name?.split(' ')[0] ||
+                'Degen'} 👋
+            </Text>
+            <Text style={styles.subGreeting}>GeSIM Control Center</Text>
+          </View>
+          {/* Coin Button on the right, now opens the modal */}
+          <CoinButton onPress={() => setRewardsModalVisible(true)} />
         </View>
-                 {/* Coin Button on the right, now opens the modal */}
-                 <CoinButton onPress={() => setRewardsModalVisible(true)} />
-               </View>
 
 
-                 {/* --- WALLET CARD SECTION --- */}
-                 <View style={styles.section}>
-                   <View style={styles.walletCardContainer}>
-                     {/* Background Glow */}
-                     <LinearGradient
-                       colors={['rgba(47, 102, 246, 0.4)', 'rgba(0, 229, 255, 0.1)']}
-                       start={{ x: 0, y: 0 }}
-                       end={{ x: 1, y: 1 }}
-                       style={styles.walletCardGlow}
-                     />
-                     <BlurView intensity={Platform.OS === 'ios' ? 40 : 20} tint="dark" style={styles.walletCard}>
-                       <View>
-                         <Text style={styles.walletLabel}>SOL WALLET</Text>
+        {/* --- WALLET CARD SECTION --- */}
+        <View style={styles.section}>
+          <View style={styles.walletCardContainer}>
+            {/* Background Glow */}
+            <LinearGradient
+              colors={['rgba(47, 102, 246, 0.4)', 'rgba(0, 229, 255, 0.1)']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.walletCardGlow}
+            />
+            <BlurView intensity={Platform.OS === 'ios' ? 40 : 20} tint="dark" style={styles.walletCard}>
+              <View>
+                <Text style={styles.walletLabel}>SOL WALLET</Text>
 
-                        <Text style={styles.walletBalance}>${walletData.totalValue.toFixed(4)}</Text>
-                       </View>
-                       <Pressable style={styles.addressPill} onPress={copyAddress}>
-                         <Text style={styles.addressText}>{truncatedAddress}</Text>
-                         <Text style={styles.copyIcon}>📋</Text>
-                       </Pressable>
-                     </BlurView>
-                   </View>
-                 </View>
-                 {/* --- END OF WALLET CARD SECTION --- */}
+                <Text style={styles.walletBalance}>${walletData.totalValue.toFixed(4)}</Text>
+              </View>
+              <Pressable style={styles.addressPill} onPress={copyAddress}>
+                <Text style={styles.addressText}>{truncatedAddress}</Text>
+                <Text style={styles.copyIcon}>📋</Text>
+              </Pressable>
+            </BlurView>
+          </View>
+        </View>
+        {/* --- END OF WALLET CARD SECTION --- */}
 
 
 
@@ -332,15 +350,15 @@ const truncatedAddress = walletAddress
                     </View>
 
                     {/* Right side: Stylized QR Button */}
-                     <Pressable onPress={() => handleViewQr(item)} style={styles.qrButton}>
+                    <Pressable onPress={() => handleViewQr(item)} style={styles.qrButton}>
                       {/* ✅ REPLACED with an Image component */}
                       <Image
-                      source={require('../../assets/qr-icon.png')}
-                      style={styles.qrIconImage}
+                        source={require('../../assets/qr-icon.png')}
+                        style={styles.qrIconImage}
                       />
                       <Text style={styles.qrButtonText}>View QR</Text>
-                      </Pressable>
-                      </View>
+                    </Pressable>
+                  </View>
 
                   {/* Progress bar */}
                   <View style={styles.progressTrack}>
@@ -423,49 +441,49 @@ const truncatedAddress = walletAddress
         </View>
       </ScrollView>
 
-     {/* RENDER MODALS */}
-       {/* 1. The actual Rewards Modal (now with a transparent background) */}
-           <RewardsModal
-             visible={isRewardsModalVisible}
-             onClose={() => setRewardsModalVisible(false)}
-             totalCoins={earnedCoins}
-             activities={rewardActivities}
-           />
+      {/* RENDER MODALS */}
+      {/* 1. The actual Rewards Modal (now with a transparent background) */}
+      <RewardsModal
+        visible={isRewardsModalVisible}
+        onClose={() => setRewardsModalVisible(false)}
+        totalCoins={earnedCoins}
+        activities={rewardActivities}
+      />
 
-           {/* ... Your other modals (PurchaseModal, ActivationModal) ... */}
+      {/* ... Your other modals (PurchaseModal, ActivationModal) ... */}
 
-           {/* 2. ✅ The Blur Overlay, rendered conditionally */}
-           {isRewardsModalVisible && (
-             <BlurView
-               intensity={25}
-               tint="dark"
-               style={StyleSheet.absoluteFill} // This makes it cover the whole screen
-             />
-           )}
+      {/* 2. ✅ The Blur Overlay, rendered conditionally */}
+      {isRewardsModalVisible && (
+        <BlurView
+          intensity={25}
+          tint="dark"
+          style={StyleSheet.absoluteFill} // This makes it cover the whole screen
+        />
+      )}
 
-           <ActivationModal
-             visible={qrModalVisible}
-             profile={selectedForQr}
-             // ✅ CORRECTED LOGIC
-             onClose={() => {
-               // 1. First, close the modal
-               setQrModalVisible(false);
-               // 2. Then, manually trigger a data refresh on the Dashboard
-               console.log("[CALLBACK] Modal closed. Triggering dashboard refresh...");
-               fetchData();
-             }}
-           />
+      <ActivationModal
+        visible={qrModalVisible}
+        profile={selectedForQr}
+        // ✅ CORRECTED LOGIC
+        onClose={() => {
+          // 1. First, close the modal
+          setQrModalVisible(false);
+          // 2. Then, manually trigger a data refresh on the Dashboard
+          console.log("[CALLBACK] Modal closed. Triggering dashboard refresh...");
+          fetchData();
+        }}
+      />
 
-           <PurchaseModal
-             visible={isModalVisible}
-             plan={selectedPlan}
-             // You should do the same for the purchase modal!
-             onClose={() => {
-                 setModalVisible(false);
-                 // If a purchase might result in a new plan, refresh here too.
-                 fetchData();
-             }}
-           />
+      <PurchaseModal
+        visible={isModalVisible}
+        plan={selectedPlan}
+        // You should do the same for the purchase modal!
+        onClose={() => {
+          setModalVisible(false);
+          // If a purchase might result in a new plan, refresh here too.
+          fetchData();
+        }}
+      />
     </LinearGradient>
   );
 }
@@ -474,8 +492,8 @@ const truncatedAddress = walletAddress
 const styles = StyleSheet.create({
   container: { flex: 1 },
   content: { padding: Spacing.lg, paddingBottom: 40 },
-  greeting: {  },
-  greetingText: { color: '#FFF', fontSize: 28, fontWeight: '800' },
+  greeting: {},
+  greetingText: { color: Colors.textPrimary, fontSize: 28, fontWeight: '800' },
   subGreeting: { color: '#00E5FF', fontSize: 13, fontWeight: '600', letterSpacing: 1.5 },
   section: { marginBottom: 32 },
   sectionTitle: { color: '#FFF', fontSize: 20, fontWeight: '700', marginBottom: 16 },
@@ -483,12 +501,12 @@ const styles = StyleSheet.create({
   viewAll: { color: '#2F66F6', fontWeight: '800' },
 
   headerRow: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      paddingHorizontal: Spacing.lg, // Assuming Spacing.lg is your standard padding
-      marginBottom: 32,
-    },
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: Spacing.lg, // Assuming Spacing.lg is your standard padding
+    marginBottom: 32,
+  },
 
 
   /* --- CARD STYLES --- */
@@ -547,7 +565,7 @@ const styles = StyleSheet.create({
     fontWeight: '800'
   },
   usageLabel: {
-    color: '#94A3B8',
+    color: Colors.textSecondary,
     fontSize: 12,
     marginLeft: 4,
     fontWeight: '500'
@@ -565,10 +583,10 @@ const styles = StyleSheet.create({
     marginLeft: 12,
   },
   qrIconImage: {
-      width: 28, // Adjust size as needed
-      height: 28, // Adjust size as needed
-      marginBottom: 4,
-    },
+    width: 28, // Adjust size as needed
+    height: 28, // Adjust size as needed
+    marginBottom: 4,
+  },
   qrButtonText: {
     color: '#2F66F6',
     fontSize: 10,
@@ -595,7 +613,7 @@ const styles = StyleSheet.create({
   },
   expandHeaderActive: { backgroundColor: 'rgba(255,255,255,0.05)' },
   expandText: {
-    color: '#94A3B8',
+    color: Colors.textSecondary,
     fontSize: 10,
     fontWeight: '700',
     textTransform: 'uppercase',
@@ -656,67 +674,67 @@ const styles = StyleSheet.create({
 
   /* Featured Cards */
   featuredCard: { width: 145, backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 24, padding: 18, marginRight: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)' },
-  fTitle: { color: '#94A3B8', fontSize: 10, fontWeight: '700', textTransform: 'uppercase' },
-  fData: { color: '#FFF', fontSize: 20, fontWeight: '800', marginVertical: 6 },
+  fTitle: { color: Colors.textSecondary, fontSize: 10, fontWeight: '700', textTransform: 'uppercase' },
+  fData: { color: Colors.textPrimary, fontSize: 20, fontWeight: '800', marginVertical: 6 },
   featuredFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 10 },
   fPrice: { color: '#00E5FF', fontSize: 16, fontWeight: '700' },
   fBuyBtn: { backgroundColor: '#2F66F6', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10 },
   fBuyText: { color: '#FFF', fontSize: 11, fontWeight: '800' },
 
   walletCardContainer: {
-      position: 'relative',
-      marginBottom: 16, // Space between this and the next section
-    },
-    walletCardGlow: {
-      position: 'absolute',
-      top: -10,
-      left: 0,
-      right: 0,
-      bottom: -10,
-      borderRadius: 32,
-      opacity: 0.6,
-    },
-    walletCard: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      padding: 24,
-      borderRadius: 28,
-      borderWidth: 1,
-      borderColor: 'rgba(255, 255, 255, 0.1)',
-      overflow: 'hidden',
-    },
-    walletLabel: {
-      color: '#94A3B8',
-      fontSize: 11,
-      fontWeight: '700',
-      textTransform: 'uppercase',
-      letterSpacing: 1,
-    },
-    walletBalance: {
-        color: '#FFF',
-        fontSize: 28,
-        fontWeight: '800',
-        marginTop: 4,
-      },
-      addressPill: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        backgroundColor: 'rgba(0, 0, 0, 0.3)',
-        paddingVertical: 8,
-        paddingHorizontal: 12,
-        borderRadius: 20,
-        borderWidth: 1,
-        borderColor: 'rgba(255, 255, 255, 0.1)',
-      },
-      addressText: {
-        color: '#E2E8F0',
-        fontSize: 12,
-        fontFamily: 'monospace',
-        marginRight: 8,
-      },
-      copyIcon: {
-        color: '#64748B',
-        fontSize: 14,
-      }
+    position: 'relative',
+    marginBottom: 16, // Space between this and the next section
+  },
+  walletCardGlow: {
+    position: 'absolute',
+    top: -10,
+    left: 0,
+    right: 0,
+    bottom: -10,
+    borderRadius: 32,
+    opacity: 0.6,
+  },
+  walletCard: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 24,
+    borderRadius: 28,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+    overflow: 'hidden',
+  },
+  walletLabel: {
+    color: Colors.textSecondary,
+    fontSize: 11,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
+  walletBalance: {
+    color: Colors.textPrimary,
+    fontSize: 28,
+    fontWeight: '800',
+    marginTop: 4,
+  },
+  addressPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  addressText: {
+    color: '#E2E8F0',
+    fontSize: 12,
+    fontFamily: 'monospace',
+    marginRight: 8,
+  },
+  copyIcon: {
+    color: '#64748B',
+    fontSize: 14,
+  }
 });

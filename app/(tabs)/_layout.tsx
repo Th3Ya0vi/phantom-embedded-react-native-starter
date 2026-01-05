@@ -8,36 +8,37 @@ import { useSession } from '@/lib/session/SessionContext';
 import { ActivityIndicator, View, StyleSheet } from 'react-native';
 import { useAuthActions } from '@/hooks/useAuthActions'; // Import your robust logout
 import { Colors } from '@/lib/theme';
-import { useAccounts } from '@phantom/react-native-sdk';
+import { usePrivy } from '@privy-io/expo';
 
 export default function TabLayout() {
-     const { isAuthenticated, isHydrated } = useSession();
-       const { isConnected } = useAccounts();
-       const { logout } = useAuthActions(); // This is the version that handles API + Wallet + Redirect
+  const { isAuthenticated, isHydrated } = useSession();
+  const { user } = usePrivy();
+  const isConnected = !!user;
+  const { logout } = useAuthActions(); // This is the version that handles API + Wallet + Redirect
 
-     // 1. SECURITY SYNC: Automatically log out if wallet is disconnected
-      useEffect(() => {
-          if (isHydrated && !isConnected && isAuthenticated) {
-            console.log("[SECURITY] Wallet disconnected manually. Wiping local session...");
-         //   logout(); // Just clear the local token
-          }
-        }, [isConnected, isAuthenticated, isHydrated]);
+  // 1. SECURITY SYNC: Automatically log out if wallet is disconnected
+  useEffect(() => {
+    if (isHydrated && !isConnected && isAuthenticated) {
+      console.log("[SECURITY] Wallet disconnected manually. Wiping local session...");
+      //   logout(); // Just clear the local token
+    }
+  }, [isConnected, isAuthenticated, isHydrated]);
 
-        // 1. Wait for storage
-        if (!isHydrated) {
-          return (
-            <View style={styles.loadingContainer}>
-              <ActivityIndicator size="large" color="#2F66F6" />
-            </View>
-          );
-        }
+  // 1. Wait for storage
+  if (!isHydrated) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#2F66F6" />
+      </View>
+    );
+  }
 
-        // 2. THE GATEKEEPER
-        // If no token exists, the user is NOT allowed in this folder. Redirect to Home.
-        if (!isAuthenticated) {
-          console.log("[LAYOUT] No session. Redirecting to home.");
-          return <Redirect href="/home" />;
-        }
+  // 2. THE GATEKEEPER
+  // If no token exists, the user is NOT allowed in this folder. Redirect to Home.
+  if (!isAuthenticated) {
+    console.log("[LAYOUT] No session. Redirecting to home.");
+    return <Redirect href="/home" />;
+  }
 
 
   return (
@@ -51,7 +52,7 @@ export default function TabLayout() {
           borderTopWidth: 0,
         },
         headerStyle: {
-            backgroundColor: '#1a1a1a',
+          backgroundColor: '#1a1a1a',
         },
         headerTintColor: '#fff',
       }}
@@ -102,3 +103,12 @@ export default function TabLayout() {
     </Tabs>
   );
 }
+
+const styles = StyleSheet.create({
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#000',
+  },
+});

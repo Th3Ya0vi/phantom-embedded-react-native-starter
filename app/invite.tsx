@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Text,
   TextInput,
@@ -13,11 +13,11 @@ import {
   Dimensions,
   ScrollView,
   RefreshControl,
-  Alert,
   AppState,
+  Clipboard,
 } from 'react-native';
 import * as Linking from 'expo-linking';
-import { useAccounts, AddressType } from '@phantom/react-native-sdk';
+import { usePrivy, useEmbeddedSolanaWallet } from '@privy-io/expo';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -26,6 +26,8 @@ import { Colors as ThemeColors, Spacing as ThemeSpacing } from '@/lib/theme';
 import { useAuthActions } from '@/hooks/useAuthActions';
 import { useInviteActions } from '@/hooks/useInviteActions';
 import { useSession } from '@/lib/session/SessionContext';
+import { useApiActions } from '@/hooks/useApiActions';
+import { useNotifications } from '@/lib/ui/NotificationContext';
 
 const { width } = Dimensions.get('window');
 
@@ -51,95 +53,176 @@ export default function InviteScreen() {
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isCreatingWallet, setIsCreatingWallet] = useState(false);
+  const hasAttemptedLogin = useRef(false);
 
   // ✅ GET THE FULL USER OBJECT
-  const { isHydrated, isAuthenticated, user } = useSession();
-  const { addresses, isConnected } = useAccounts();
+  const { isHydrated, isAuthenticated, user: sessionUser } = useSession(); // sessionUser to avoid conflict if needed, but Privy uses 'user' too.
+  const { user, isReady } = usePrivy();
+  const wallet = useEmbeddedSolanaWallet();
+  const { handleLogin } = useApiActions();
+  const { showToast } = useNotifications();
+
+  // Helper to extract Solana address from Privy user
+  const getSolanaAddress = (u: any) => {
+    if (!u) return null;
+    const solanaAccount = u.linked_accounts?.find(
+      (acc: any) => acc.type === 'wallet' && acc.chain_type === 'solana'
+    );
+    return solanaAccount?.address || null;
+  };
+
+  const privyAddress = getSolanaAddress(user);
+  const hookAddress = wallet.status === 'connected' ? (wallet as any).address : null;
+  const walletAddress = privyAddress || hookAddress;
+  const isWalletReady = !!walletAddress;
+
+  // Log wallet state for debugging
+  useEffect(() => {
+    if (!isReady) return;
+    // Verbose logging removed for cleaner production experience
+  }, [user, wallet.status, isHydrated, isAuthenticated, sessionUser, isCreatingWallet, isReady, walletAddress]);
+
+  // ✅ AUTOMATIC WALLET CREATION
+  useEffect(() => {
+    const createWalletIfNeeded = async () => {
+      if (!isReady) return;
+      if (!user) {
+        console.log('[WalletCreation] No user yet (user is null), cannot create wallet');
+        return;
+      }
+
+      // If we already have an address from the user object, we don't need to create
+      if (privyAddress) {
+        console.log('[WalletCreation] Wallet already exists in user object:', privyAddress);
+        return;
+      }
+
+      console.log('[WalletCreation] Checking status:', wallet.status);
+      if (wallet.status === 'not-created') {
+        console.log('[WalletCreation] Status is NOT-CREATED. Attempting to create...');
+        setIsCreatingWallet(true);
+        try {
+          const newWallet = await wallet.create();
+          console.log('[WalletCreation] ✅ wallet.create() call finished:', newWallet?.address);
+          showToast('Wallet created successfully');
+        } catch (err: any) {
+          console.error('[WalletCreation] ❌ Error in wallet.create():', err);
+          // If the error says it already exists, just log it
+          if (err.message?.includes('already has') || err.message?.includes('exists')) {
+            console.log('[WalletCreation] Wallet actually already exists');
+          } else {
+            showToast(err.message || 'Failed to create wallet');
+          }
+        } finally {
+          setIsCreatingWallet(false);
+        }
+      } else {
+        console.log('[WalletCreation] Skipping creation, status is:', wallet.status);
+      }
+    };
+
+    createWalletIfNeeded();
+  }, [user, wallet.status, isReady, privyAddress]);
+
+
+  // ✅ AUTOMATIC LOGIN WHEN WALLET IS READY
+  useEffect(() => {
+    const performAutoLogin = async () => {
+      // Only login when we have an address and we haven't tried yet
+      if (
+        walletAddress &&
+        user &&
+        !hasAttemptedLogin.current &&
+        !isAuthenticated
+      ) {
+        const email = (user as any)?.email?.address || (user as any).linked_accounts?.find((a: any) => a.type === 'email')?.address;
+
+        console.log('[AutoLogin] Attempting login with wallet:', walletAddress);
+        console.log('[AutoLogin] Email:', email);
+
+        hasAttemptedLogin.current = true;
+
+        try {
+          await handleLogin({ email, walletAddress });
+          console.log('[AutoLogin] ✅ Login successful');
+          showToast('Session synchronized');
+        } catch (err: any) {
+          console.error('[AutoLogin] ❌ Login failed:', err);
+          showToast(err.message || 'Login sync failed');
+          // Reset so user can retry if needed
+          hasAttemptedLogin.current = false;
+        }
+      }
+    };
+
+    performAutoLogin();
+  }, [walletAddress, user, isAuthenticated, handleLogin]);
+
+
+  const isConnected = !!user;
+
+
   const { loginWithWallet } = useAuthActions();
   const { redeemInvite } = useInviteActions();
-
-  const solanaAccount = addresses?.find((addr) => addr.addressType === AddressType.solana);
-  const walletAddress = solanaAccount?.address;
 
   /* ------------------------------------------------------------------ */
   /* LOGIN & REDIRECT LOGIC                                             */
   /* ------------------------------------------------------------------ */
   const checkSessionAndRedirect = useCallback(async () => {
-    log('REDIRECT_CHECK_START', {
-      isHydrated,
-      isAuthenticated,
-      inviteClaimed: user?.inviteClaimed,
-      isConnected,
-      hasAddress: !!walletAddress
-    });
-
-    // ✅ THE CRITICAL FIX: Only redirect if the user object exists AND inviteClaimed is true.
+    // ✅ THE CRITICAL FIX: Only redirect if the user session is valid AND inviteClaimed is true.
     if (isHydrated && isAuthenticated) {
-        if(user?.inviteClaimed){
-      log('REDIRECTING: User session is valid and invite is already claimed.',user?.inviteClaimed);
-      router.replace('/(tabs)');
-      return;
-      }else {
-   log('REDIRECTING FAILED: User session is valid and invite not claimed.',user.inviteClaimed);
-
-          return ;}
+      if (sessionUser?.inviteClaimed) {
+        router.replace('/(tabs)');
+        return;
+      } else {
+        return;
+      }
     }
 
     // If session is valid but invite is NOT claimed, we stay on this page.
-    if (isHydrated && isAuthenticated && !user?.inviteClaimed) {
-        log('STAYING: User is logged in but has not claimed an invite yet.');
-        return;
+    if (isHydrated && isAuthenticated && !sessionUser?.inviteClaimed) {
+      return;
     }
 
     // If not authenticated, but wallet is connected, try to log in.
     if (isHydrated && !isAuthenticated && isConnected && walletAddress) {
-      log('ATTEMPTING_AUTO_LOGIN', { walletAddress });
       setLoading(true);
       try {
         const loggedInUser = await loginWithWallet(walletAddress);
-       log('User-LOGGED_IN', { inviteClaimed: loggedInUser?.inviteClaimed });
         // After login, re-check if their new session has inviteClaimed set
         if (loggedInUser?.inviteClaimed) {
-          log('AUTO_LOGIN_SUCCESS: Invite claimed. Redirecting.');
           router.replace('/(tabs)');
-        } else {
-          log('AUTO_LOGIN_SUCCESS: User can now enter code.');
         }
       } catch (err: any) {
-        log('AUTO_LOGIN_ERROR', err.message);
+        console.error('[Invite] Auto-login error:', err.message);
       } finally {
         setLoading(false);
       }
-    } else {
-        log('WAITING: Prerequisites for auto-login not met.');
     }
-  }, [isHydrated, isAuthenticated, user, isConnected, walletAddress, loginWithWallet]);
+  }, [isHydrated, isAuthenticated, sessionUser, isConnected, walletAddress, loginWithWallet]);
 
-useEffect(() => {
-    log('STATE_WATCHER_EFFECT', { isAuthenticated, inviteClaimed: user?.inviteClaimed });
-
+  useEffect(() => {
     // If the user is authenticated AND their invite status is now 'true', redirect.
     // This will fire after a successful `redeemInvite` call updates the context.
-    if (isAuthenticated && user?.inviteClaimed) {
-      log('STATE_WATCHER: Invite status is now claimed. Redirecting...');
+    if (isAuthenticated && sessionUser?.inviteClaimed) {
       router.replace('/(tabs)');
     }
-  }, [user, isAuthenticated]);
+  }, [sessionUser, isAuthenticated]);
 
   /* ------------------------------------------------------------------ */
   /* REFRESH HANDLERS                                                   */
   /* ------------------------------------------------------------------ */
   const onRefresh = useCallback(() => {
-    log('PULL_TO_REFRESH_TRIGGERED');
     setRefreshing(true);
     checkSessionAndRedirect().finally(() => setRefreshing(false));
   }, [checkSessionAndRedirect]);
 
-useFocusEffect(
-  useCallback(() => {
-    checkSessionAndRedirect();
-  }, [checkSessionAndRedirect])
-);
+  useFocusEffect(
+    useCallback(() => {
+      checkSessionAndRedirect();
+    }, [checkSessionAndRedirect])
+  );
 
 
 
@@ -147,13 +230,13 @@ useFocusEffect(
   /* REDEEM LOGIC                                                       */
   /* ------------------------------------------------------------------ */
   const onRedeem = async () => {
-    if (!code || loading) return;
+    if (!code || loading || !isWalletReady) return;
     setError(null);
     setLoading(true);
+
     try {
       await redeemInvite(code.trim());
       // On successful redeem, the user object will update, and the useFocusEffect will handle the redirect.
-      log('REDEEM_SUCCESS: Invite claimed. Awaiting redirect.');
 
     } catch (e: any) {
       setError(e.message || 'Invalid invite code');
@@ -162,12 +245,20 @@ useFocusEffect(
     }
   };
 
-  const statusColor = walletAddress ? STATUS_COLORS.success : STATUS_COLORS.processing;
+  const handleCopyAddress = () => {
+    if (walletAddress) {
+      Clipboard.setString(walletAddress);
+      showToast('Address copied to clipboard');
+    }
+  };
+
+  const statusColor = isWalletReady ? STATUS_COLORS.success : STATUS_COLORS.processing;
+  const isButtonDisabled = !code || loading || !isWalletReady;
 
   return (
     <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-        {/* ... (The rest of your JSX remains exactly the same) ... */}
-         <View style={{ flex: 1 }}>
+      {/* ... (The rest of your JSX remains exactly the same) ... */}
+      <View style={{ flex: 1 }}>
         <Stack.Screen options={{ headerShown: false }} />
         <LinearGradient colors={Gradients.background} style={StyleSheet.absoluteFill} />
 
@@ -175,10 +266,10 @@ useFocusEffect(
           contentContainerStyle={{ flexGrow: 1 }}
           refreshControl={
             <RefreshControl
-                refreshing={refreshing}
-                onRefresh={onRefresh}
-                tintColor="#FFF"
-                colors={['#2F66F6']}
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor="#FFF"
+              colors={['#2F66F6']}
             />
           }
           alwaysBounceVertical={true}
@@ -195,18 +286,53 @@ useFocusEffect(
                 <View style={[styles.walletPill, { borderColor: statusColor }]}>
                   <View style={[styles.activeDot, { backgroundColor: statusColor }]} />
                   <Text style={[styles.walletText, { color: statusColor }]}>
-                    {walletAddress
+                    {isWalletReady
                       ? `Connected: ${walletAddress.slice(0, 4)}...${walletAddress.slice(-4)}`
-                      : 'Syncing with Phantom...'}
+                      : wallet.status === 'creating' || isCreatingWallet
+                        ? 'Creating wallet...'
+                        : wallet.status === 'not-created'
+                          ? 'Wallet not created'
+                          : `Wallet: ${wallet.status}...`}
                   </Text>
-                  <Pressable onPress={onRefresh} style={{ marginLeft: 8 }}>
-                    <Text style={{ fontSize: 14 }}>🔄</Text>
-                  </Pressable>
+                  {!isWalletReady && (
+                    <Pressable onPress={onRefresh} style={{ marginLeft: 8 }}>
+                      <Text style={{ fontSize: 14 }}>🔄</Text>
+                    </Pressable>
+                  )}
                 </View>
               </View>
 
               <LinearGradient colors={Gradients.card} style={styles.cardBorder}>
                 <BlurView intensity={30} tint="dark" style={styles.cardBody}>
+                  {/* WALLET STATUS SECTION ABOVE INPUT */}
+                  <View style={styles.walletStatusSection}>
+                    <Text style={styles.statusLabel}>WALLET STATUS</Text>
+                    <View style={styles.statusDisplay}>
+                      {isWalletReady ? (
+                        <>
+                          <View style={styles.addressContainer}>
+                            <View style={[styles.statusDot, { backgroundColor: STATUS_COLORS.success }]} />
+                            <Text style={styles.addressText} numberOfLines={1} ellipsizeMode="middle">
+                              {walletAddress}
+                            </Text>
+                          </View>
+                          <Pressable onPress={handleCopyAddress} style={styles.copyButton}>
+                            <Text style={styles.copyButtonText}>COPY</Text>
+                          </Pressable>
+                        </>
+                      ) : (
+                        <View style={styles.processingContainer}>
+                          <ActivityIndicator size="small" color={Colors.primary} style={{ marginRight: 8 }} />
+                          <Text style={styles.processingText}>
+                            {wallet.status === 'creating' || isCreatingWallet
+                              ? 'Creating your wallet...'
+                              : 'Initializing wallet...'}
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+                  </View>
+
                   <Text style={styles.label}>INVITATION CODE</Text>
                   <TextInput
                     placeholder="GSM-XX-XXX"
@@ -229,8 +355,8 @@ useFocusEffect(
                   )}
 
                   <Pressable
-                    style={[styles.primaryButton, (!code || loading) && styles.disabledButton]}
-                    disabled={!code || loading}
+                    style={[styles.primaryButton, isButtonDisabled && styles.disabledButton]}
+                    disabled={isButtonDisabled}
                     onPress={onRedeem}
                   >
                     {loading ? <ActivityIndicator color="#FFF" /> : <Text style={styles.primaryButtonText}>Verify & Enter</Text>}
@@ -267,6 +393,16 @@ const styles = StyleSheet.create({
   errorContainer: { marginBottom: Spacing.md, padding: 8, borderRadius: 8, backgroundColor: 'rgba(255,107,107,0.1)' },
   errorText: { color: '#FF6B6B', textAlign: 'center', fontSize: 13 },
   primaryButton: { backgroundColor: Colors.primary, borderRadius: 16, paddingVertical: 16, alignItems: 'center' },
-  disabledButton: { opacity: 0.5 },
+  disabledButton: { opacity: 0.3 },
   primaryButtonText: { color: '#FFFFFF', fontWeight: '700', fontSize: 16 },
+  walletStatusSection: { marginBottom: Spacing.lg, paddingBottom: Spacing.md, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.05)' },
+  statusLabel: { color: Colors.textSecondary, fontSize: 10, fontWeight: '700', marginBottom: Spacing.sm, letterSpacing: 1 },
+  statusDisplay: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: 'rgba(0,0,0,0.2)', padding: 12, borderRadius: 12 },
+  addressContainer: { flex: 1, flexDirection: 'row', alignItems: 'center' },
+  statusDot: { width: 8, height: 8, borderRadius: 4, marginRight: 8 },
+  addressText: { color: '#FFF', fontSize: 13, fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace', flex: 1 },
+  copyButton: { backgroundColor: 'rgba(255,255,255,0.1)', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 6, marginLeft: 8 },
+  copyButtonText: { color: Colors.primary, fontSize: 10, fontWeight: '700' },
+  processingContainer: { flexDirection: 'row', alignItems: 'center' },
+  processingText: { color: Colors.textSecondary, fontSize: 14 },
 });
