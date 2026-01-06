@@ -14,7 +14,11 @@ import Constants from 'expo-constants';
 import * as WebBrowser from 'expo-web-browser';
 
 import * as Linking from 'expo-linking';
+import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
+
+// Keep the splash screen visible while we fetch resources
+SplashScreen.preventAutoHideAsync();
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -56,6 +60,18 @@ export default function RootLayout() {
 
   // Note: passkeyAssociatedDomain needs to be handled if PrivyProvider accepts it, otherwise it might be for specific passkey config.
   // Checking Privy docs (implicit knowledge), we usually pass appId and clientId.
+
+  // Hide splash screen when the root layout is mounted
+  // Hide splash screen when the root layout is mounted and ready
+  useEffect(() => {
+    // Adding a small delay to ensure the UI is ready behind the splash
+    // This helps prevent the white/black flash
+    const timer = setTimeout(async () => {
+      await SplashScreen.hideAsync();
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, []);
 
   return (
     <PrivyProvider

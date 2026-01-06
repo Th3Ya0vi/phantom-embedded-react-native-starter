@@ -83,7 +83,7 @@ export function PurchaseModal({ visible, onClose, plan }: PurchaseModalProps) {
   const walletAddress = getSolanaAddress(privyUser) || (wallet as any).address;
 
   // --- STATE ---
-  const [purchaseStep, setPurchaseStep] = useState<'IDLE' | 'PAYING' | 'LOGGING' | 'PROVISIONING' | 'SUCCESS'>('IDLE');
+  const [purchaseStep, setPurchaseStep] = useState<'IDLE' | 'PAYING' | 'LOGGING' | 'PROVISIONING' | 'CREDITING_REWARDS' | 'SUCCESS'>('IDLE');
   const [provisionedProfile, setProvisionedProfile] = useState<any>(null);
   const [isFetchingBalance, setIsFetchingBalance] = useState(true);
   const [walletData, setWalletData] = useState({ solBalance: 0, usdcBalance: 0, solValueUsd: 0 });
@@ -152,7 +152,12 @@ export function PurchaseModal({ visible, onClose, plan }: PurchaseModalProps) {
 
   return (
     <>
-      <Modal animationType="slide" transparent={true} visible={visible} onRequestClose={onClose}>
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={visible && purchaseStep !== 'SUCCESS'}
+        onRequestClose={onClose}
+      >
         <View style={styles.overlay}>
           <Pressable style={styles.backdrop} onPress={!isProcessing ? onClose : undefined} />
           <BlurView intensity={90} tint="dark" style={[styles.modalContent, { paddingBottom: insets.bottom + 20 }]}>
@@ -174,12 +179,12 @@ export function PurchaseModal({ visible, onClose, plan }: PurchaseModalProps) {
                     status={purchaseStep === 'PAYING' ? 'in-progress' : 'done'}
                   />
                   <ChecklistItem
-                    label="Verifying Transaction"
-                    status={purchaseStep === 'PAYING' ? 'pending' : (purchaseStep === 'LOGGING' ? 'in-progress' : 'done')}
+                    label="Provisioning eSIM"
+                    status={purchaseStep === 'PAYING' ? 'pending' : (['LOGGING', 'PROVISIONING'].includes(purchaseStep) ? 'in-progress' : 'done')}
                   />
                   <ChecklistItem
-                    label="Allocating eSIM Profile"
-                    status={purchaseStep === 'PROVISIONING' ? 'in-progress' : (['PAYING', 'LOGGING'].includes(purchaseStep) ? 'pending' : 'done')}
+                    label="Crediting Bonus Points"
+                    status={purchaseStep === 'CREDITING_REWARDS' ? 'in-progress' : (['PAYING', 'LOGGING', 'PROVISIONING'].includes(purchaseStep) ? 'pending' : 'done')}
                   />
                 </View>
 

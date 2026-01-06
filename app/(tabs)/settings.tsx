@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, Pressable, ScrollView, Switch } from 'react-native';
+import { View, Text, StyleSheet, Pressable, ScrollView, Switch, Linking } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -7,14 +7,22 @@ import { Colors, Spacing, Typography, Gradients } from '@/lib/theme';
 import { usePrivy } from '@privy-io/expo';
 import { useAuthActions } from '@/hooks/useAuthActions';
 import { useNotifications } from '@/lib/ui/NotificationContext';
+import * as WebBrowser from 'expo-web-browser';
+import { HowItWorksModal } from '@/components/modals/HowItWorksModal';
 
 export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
   const { logout } = useAuthActions();
   const { showAlert } = useNotifications();
   const [isDarkMode, setIsDarkMode] = useState(true);
+  const [howItWorksVisible, setHowItWorksVisible] = useState(false);
 
   const { user: privyUser } = usePrivy();
+
+  const handleOpenTerms = () => WebBrowser.openBrowserAsync('https://www.gesim.xyz/terms');
+  const handleOpenPrivacy = () => WebBrowser.openBrowserAsync('https://www.gesim.xyz/privacy');
+  const handleOpenTelegram = () => WebBrowser.openBrowserAsync('https://t.me/Charchit_web3');
+  const handleOpenMail = () => Linking.openURL('mailto:contact@gesim.xyz');
 
   const userName = (privyUser as any)?.email?.address?.split('@')[0] ||
     (privyUser as any)?.linked_accounts?.find((a: any) => a.type === 'google_oauth')?.name?.split(' ')[0] ||
@@ -24,11 +32,11 @@ export default function SettingsScreen() {
 
   const handleLogout = () => {
     showAlert({
-      title: "Disconnect Wallet",
+      title: "Sign Out",
       message: "Are you sure you want to exit? This will end your session.",
       buttons: [
         { text: "Cancel", style: "cancel" },
-        { text: "Disconnect", style: "destructive", onPress: logout },
+        { text: "Sign Out", style: "destructive", onPress: logout },
       ]
     });
   };
@@ -39,8 +47,13 @@ export default function SettingsScreen() {
       <ScrollView contentContainerStyle={[styles.content, { paddingTop: insets.top + 20 }]}>
 
         <View style={styles.header}>
-          <Text style={styles.title}>System</Text>
-          <Text style={styles.subtitle}>Configuration & Identity</Text>
+          <View>
+            <Text style={styles.title}>System</Text>
+            <Text style={styles.subtitle}>Configuration & Identity</Text>
+          </View>
+          <Pressable onPress={handleLogout} style={styles.headerLogoutBtn}>
+            <Text style={styles.headerLogoutText}>Sign Out</Text>
+          </Pressable>
         </View>
 
         {/* Profile Glass Card */}
@@ -70,19 +83,33 @@ export default function SettingsScreen() {
         </SettingsGroup>
 
         <SettingsGroup title="Knowledge Base">
-          <SettingsRow label="How it Works" showChevron />
-          <SettingsRow label="Terms of Service" showChevron />
-          <SettingsRow label="Privacy Policy" showChevron />
+          <Pressable onPress={() => setHowItWorksVisible(true)}>
+            <SettingsRow label="How it Works" showChevron />
+          </Pressable>
+          <Pressable onPress={handleOpenTerms}>
+            <SettingsRow label="Terms of Service" showChevron />
+          </Pressable>
+          <Pressable onPress={handleOpenPrivacy}>
+            <SettingsRow label="Privacy Policy" showChevron />
+          </Pressable>
         </SettingsGroup>
 
-        <SettingsGroup title="Security">
-          <Pressable onPress={handleLogout}>
-            <SettingsRow label="Disconnect Wallet" labelStyle={{ color: '#FF4B4B' }} icon="🔌" />
+        <SettingsGroup title="Support">
+          <Pressable onPress={handleOpenMail}>
+            <SettingsRow label="Mail us" value="contact@gesim.xyz" showChevron icon="📧" />
+          </Pressable>
+          <Pressable onPress={handleOpenTelegram}>
+            <SettingsRow label="Chat with us" value="Telegram" showChevron icon="💬" />
           </Pressable>
         </SettingsGroup>
 
         <Text style={styles.version}>GeSIM Protocol v1.0.42 • Built on Solana</Text>
       </ScrollView>
+
+      <HowItWorksModal
+        visible={howItWorksVisible}
+        onClose={() => setHowItWorksVisible(false)}
+      />
     </LinearGradient>
   );
 }
@@ -114,8 +141,26 @@ const SettingsRow = ({ label, value, right, showChevron, labelStyle, icon }: any
 const styles = StyleSheet.create({
   container: { flex: 1 },
   content: { padding: Spacing.lg, paddingBottom: 100 },
-  header: { marginBottom: 32 },
-  title: { ...Typography.h1, marginBottom: 32 },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 32
+  },
+  headerLogoutBtn: {
+    backgroundColor: 'rgba(255, 75, 75, 0.15)',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 75, 75, 0.3)',
+  },
+  headerLogoutText: {
+    color: '#FF4B4B',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  title: { ...Typography.h1, marginBottom: 8 },
   subtitle: { ...Typography.body },
 
   /* Profile Card */

@@ -8,6 +8,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { usePrivy, useEmbeddedSolanaWallet } from '@privy-io/expo';
 import { useApiActions } from '@/hooks/useApiActions';
 import { useNotifications } from '@/lib/ui/NotificationContext';
+import { useSession } from '@/lib/session/SessionContext';
 
 import {
   Colors as ThemeColors,
@@ -32,7 +33,8 @@ export default function WalletScreen() {
   const [refreshing, setRefreshing] = useState(false);
 
   // --- HOOKS FOR DATA ---
-  const { user } = usePrivy();
+  const { user, isAuthenticated } = useSession();
+  const { user: privyUser } = usePrivy();
   const wallet = useEmbeddedSolanaWallet();
 
   // Helper to extract Solana address from Privy user
@@ -44,7 +46,7 @@ export default function WalletScreen() {
     return solanaAccount?.address || null;
   };
 
-  const walletAddress = getSolanaAddress(user) || (wallet as any).address;
+  const walletAddress = getSolanaAddress(privyUser) || user?.walletAddress || (wallet as any).address;
 
   const { getWalletBalance, handleSendTransaction } = useApiActions();
   const { showAlert } = useNotifications();
@@ -59,7 +61,7 @@ export default function WalletScreen() {
 
   // --- DATA FETCHING LOGIC ---
   const fetchData = useCallback(async () => {
-    if (!walletAddress) return;
+    if (!isAuthenticated || !walletAddress) return;
     console.log("[WALLET] Fetching balances for:", walletAddress);
     const data = await getWalletBalance(walletAddress);
     if (data) {
@@ -68,8 +70,10 @@ export default function WalletScreen() {
   }, [walletAddress]); // Stable dependency
 
   useEffect(() => {
-    fetchData();
-  }, [walletAddress]); // Only re-run if address changes
+    if (isAuthenticated) {
+      fetchData();
+    }
+  }, [isAuthenticated, walletAddress, fetchData]);
 
   const onRefresh = () => {
     setRefreshing(true);

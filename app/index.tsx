@@ -18,13 +18,7 @@ export default function Index() {
   // 1️⃣ Wait for storage hydration AND Privy Readiness
   if (!isHydrated || !isReady) {
     return (
-      <View style={styles.container}>
-        <Image
-          source={require('../assets/gesim_with_loading_dots.gif')}
-          style={styles.splashGif}
-          resizeMode="contain"
-        />
-      </View>
+      <View style={styles.container} />
     )
   }
 
@@ -33,7 +27,7 @@ export default function Index() {
   if (isAuthenticated) {
     if (sessionUser?.inviteClaimed) {
       // Resume from last path or go to tabs root
-      const resumePath = (lastPath && lastPath.includes('(tabs)')) ? lastPath : '/(tabs)';
+      const resumePath = (lastPath?.includes('(tabs)')) ? lastPath : '/(tabs)';
       return <Redirect href={resumePath as any} />
     }
     return <Redirect href="/invite" />
@@ -58,7 +52,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   splashGif: {
-    width: 200,
-    height: 200,
+    width: '100%',
+    height: '100%',
   },
 })

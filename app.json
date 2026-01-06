@@ -4,29 +4,29 @@
     "slug": "gesim",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/default.png",
+    "icon": "./assets/logo.png",
     "userInterfaceStyle": "dark",
     "backgroundColor": "#04070D",
     "scheme": "gesim",
     "splash": {
       "image": "./assets/splash.png",
       "resizeMode": "cover",
-      "backgroundColor": "#2F66F6"
+      "backgroundColor": "#04070D"
     },
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.gesim.wallet",
       "appleTeamId": "837KBXFC63",
-      "icon": "./assets/default.png"
+      "icon": "./assets/logo.png"
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/default.png",
+        "foregroundImage": "./assets/logo.png",
         "monochromeImage": "./assets/android-notification-icon.png",
         "backgroundColor": "#2F66F6"
       },
       "package": "com.gesim.wallet",
-      "icon": "./assets/default.png",
+      "icon": "./assets/logo.png",
       "intentFilters": [
         {
           "action": "VIEW",

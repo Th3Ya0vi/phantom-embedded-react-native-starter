@@ -85,5 +85,15 @@ export const storage = {
 
   removeLastPath: async () => {
     await asyncStorage.remove(StorageKey.LAST_PATH);
+  },
+
+  // ----- Rewards
+  setRewardsBalance: async (balance: number) => {
+    await asyncStorage.set(StorageKey.REWARDS_BALANCE, balance.toString());
+  },
+
+  getRewardsBalance: async (): Promise<number> => {
+    const val = await asyncStorage.get<string>(StorageKey.REWARDS_BALANCE);
+    return val ? parseInt(val, 10) : 0;
   }
 }

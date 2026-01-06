@@ -34,13 +34,13 @@ const instance = axios.create({
 instance.interceptors.request.use(
   async (config) => {
 
-      console.log(`[AXIOS] Intercepting ${config.method?.toUpperCase()} request to: ${config.url}`);
+    console.log(`[AXIOS] Intercepting ${config.method?.toUpperCase()} request to: ${config.url}`);
 
-          // 1. Check if the route is explicitly marked as public
-          if (config.isPublic) {
-            console.log(`[AXIOS] Public route. Sending without token.`);
-            return config; // Let the request proceed immediately
-          }
+    // 1. Check if the route is explicitly marked as public
+    if (config.isPublic) {
+      console.log(`[AXIOS] Public route. Sending without token.`);
+      return config; // Let the request proceed immediately
+    }
 
     try {
       const token = await storage.getAccessToken();
@@ -51,13 +51,13 @@ instance.interceptors.request.use(
         console.log(`[AXIOS] Authorization Header attached successfully.`);
         return config;
       } else {
-         console.error(`[AXIOS-REJECT] No token found for protected route: ${config.url}. Cancelling request.`);
-         // This creates a custom, identifiable error that can be caught by the calling function.
-         return Promise.reject(new AxiosError("No authentication token available.", "NO_TOKEN"));
-            }
+        console.warn(`[AXIOS-SKIP] No token found for protected route: ${config.url}. Cancelling request.`);
+        // This creates a custom, identifiable error that can be caught by the calling function.
+        return Promise.reject(new AxiosError("No authentication token available.", "NO_TOKEN"));
+      }
     } catch (e) {
       console.error('[AXIOS] Interceptor Error', e);
-       return Promise.reject(e);
+      return Promise.reject(e);
     }
 
   },

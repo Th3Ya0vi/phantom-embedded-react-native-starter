@@ -27,6 +27,14 @@ interface RedeemInvitePayload {
   redeemedByAddress: string;
 }
 
+export interface CreditRewardsPayload {
+  userId: number;
+  reason: 'ACCOUNT_CREATION' | 'PURCHASE' | 'X_POST' | string;
+  source: string;
+  referenceId: string;
+  description: string;
+}
+
 // --- API SERVICE DEFINITION ---
 
 export const apiService = {
@@ -43,11 +51,11 @@ export const apiService = {
   },
 
   getUser: async () => {
-      const res = await instance.post('/api/user/getuser', {}, { isPublic: true })
-      return res.data
-    },
+    const res = await instance.post('/api/user/getuser', {}, { isPublic: true })
+    return res.data
+  },
 
-addSubscription: async (data: any) => {
+  addSubscription: async (data: any) => {
     const res = await instance.post(
       '/api/subscriptions/addsubscription',
       data
@@ -63,7 +71,7 @@ addSubscription: async (data: any) => {
     return res.data
   },
 
- usageCheck: async (payload: { esimTranNoList: string[] }) => {
+  usageCheck: async (payload: { esimTranNoList: string[] }) => {
     if (!payload.esimTranNoList?.length) return null
 
     const res = await instance.post(
@@ -82,30 +90,30 @@ addSubscription: async (data: any) => {
     return res.data
   },
 
-refreshAuth: async (refreshToken: string) => {
-  const res = await instance.post(
-    '/api/auth/refresh',
-    {},
-    {
-      headers: {
-        Authorization: `Bearer ${refreshToken}`,
-      },
-    }
-  )
-  return res.data
-},
+  refreshAuth: async (refreshToken: string) => {
+    const res = await instance.post(
+      '/api/auth/refresh',
+      {},
+      {
+        headers: {
+          Authorization: `Bearer ${refreshToken}`,
+        },
+      }
+    )
+    return res.data
+  },
 
-cancelEsimProfile: async (payload: {
-  esimTranNo: string
-  iccid: string
-}) => {
-  return instance.post(
-    '/api/esimAccess/cancelProfile',
-    payload
-  ).then((r) => r.data)
-},
+  cancelEsimProfile: async (payload: {
+    esimTranNo: string
+    iccid: string
+  }) => {
+    return instance.post(
+      '/api/esimAccess/cancelProfile',
+      payload
+    ).then((r) => r.data)
+  },
 
- // --- UPDATED METHOD ---
+  // --- UPDATED METHOD ---
   orderEsim: async (payload: OrderEsimPayload) => {
     const res = await instance.post('/api/esimAccess/orderSim', payload)
     return res.data
@@ -120,6 +128,17 @@ cancelEsimProfile: async (payload: {
   // --- UPDATED METHOD ---
   redeemInviteCode: async (payload: RedeemInvitePayload) => {
     const res = await instance.post('/api/invite/redeem', payload)
+    return res.data
+  },
+
+  // --- REWARDS ---
+  getRewardsSummary: async (userId: string) => {
+    const res = await instance.get(`/api/rewards/summary`, { params: { userId } })
+    return res.data
+  },
+
+  creditRewards: async (payload: CreditRewardsPayload) => {
+    const res = await instance.post('/api/rewards/credit', payload)
     return res.data
   }
 }

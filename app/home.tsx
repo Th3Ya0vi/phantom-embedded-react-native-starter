@@ -65,9 +65,9 @@ export default function HomeScreen() {
 
         <View style={styles.textContainer}>
           <Text style={styles.appName}>GeSIM</Text>
-          <Text style={styles.tagline}>Global Connectivity, Reimagined</Text>
+          <Text style={styles.tagline}>Private Connectivity, Anywhere</Text>
           <Text style={styles.description}>
-            Designed for DeFI users, Privacy travelers, Journalists and anyone who values privacy</Text>
+            For DeFI users, Journalists and anyone who values privacy</Text>
         </View>
 
 

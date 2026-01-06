@@ -75,6 +75,7 @@
     "expo-random": "^14.0.1",
     "expo-router": "~6.0.15",
     "expo-secure-store": "~15.0.7",
+    "expo-splash-screen": "^31.0.13",
     "expo-status-bar": "~3.0.9",
     "expo-web-browser": "~15.0.9",
     "fast-text-encoding": "^1.0.6",

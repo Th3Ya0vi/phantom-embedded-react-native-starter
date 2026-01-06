@@ -16,6 +16,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { CoinButton } from '@/components/ui/CoinButton'; // Import the updated CoinButton
 import { RewardsModal, RewardActivity } from '@/components/modals/RewardsModal'; // Import the new RewardsModal
 import { BlurView } from 'expo-blur';
+import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { createShimmerPlaceholder } from 'react-native-shimmer-placeholder';
@@ -51,15 +52,15 @@ const Gradients = {
   background: ThemeGradients?.background || ['#04070D', '#0F172A'],
 };
 
+const AnimatedBlurView = Animated.createAnimatedComponent(BlurView);
+
 export default function DashboardScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { user: sessionUser } = useSession(); // Renamed to avoid conflict if we used usePrivy's user here, but dashboard mainly uses session user for logic.
-  // Actually, let's use Privy for wallet access
+  const { user: sessionUser, isAuthenticated } = useSession();
   const { user: privyUser } = usePrivy();
   const wallet = useEmbeddedSolanaWallet();
 
-  // Helper to extract Solana address from Privy user
   const getSolanaAddress = (u: any) => {
     if (!u) return null;
     const solanaAccount = u.linked_accounts?.find(
@@ -70,54 +71,96 @@ export default function DashboardScreen() {
 
   const walletAddress = getSolanaAddress(privyUser) || (wallet as any).address;
 
-  const { handleGetUserSubscriptions, handleUsageCheck, handleCancelEsimProfile, getWalletBalance } = useApiActions();
+  const {
+    handleGetUserSubscriptions,
+    handleUsageCheck,
+    handleCancelEsimProfile,
+    getWalletBalance,
+    handleGetRewardsSummary
+  } = useApiActions();
   const { showAlert } = useNotifications();
 
-  // Replaces the old useAccounts logic
-  const user = sessionUser; // Keep existing user reference for subscription logic logic downstream
+  const user = sessionUser;
 
   // --- REWARDS STATE ---
   const [isRewardsModalVisible, setRewardsModalVisible] = useState(false);
-  const [earnedCoins, setEarnedCoins] = useState(1250); // Example total coins
-  const [rewardActivities, setRewardActivities] = useState<RewardActivity[]>([ // Example activity data
-    { id: '1', title: 'First Purchase', points: 1000 },
-    { id: '2', title: 'Daily Login Bonus', points: 50 },
-    { id: '3', title: 'Referral Bonus', points: 200 },
+  const [earnedCoins, setEarnedCoins] = useState(0);
+  const [rewardActivities, setRewardActivities] = useState<RewardActivity[]>([
+    { id: '1', title: 'Account Creation', points: 500 },
+    { id: '2', title: 'First Purchase', points: 100 },
+    { id: '3', title: 'Subsequent Purchase', points: 50 },
+    { id: '4', title: 'X- Endorsement', points: 200 },
   ]);
 
+  // --- REWARDS FETCHING ---
+  const fetchRewards = React.useCallback(async (userId: string) => {
+    try {
+      const total = await handleGetRewardsSummary(userId);
+      if (typeof total === 'number') setEarnedCoins(total);
+    } catch (err) {
+      console.warn("[DASHBOARD] Rewards fetch skipped or failed.");
+    }
+  }, [handleGetRewardsSummary]);
 
-  // Add state for wallet balance
-  const [walletData, setWalletData] = useState({ totalValue: 0, solBalance: 0, usdcBalance: 0 });  // --- STATE MANAGEMENT ---
+  // --- DASHBOARD STATE ---
+  const [walletData, setWalletData] = useState({ totalValue: 0, solBalance: 0, usdcBalance: 0 });
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [subscriptions, setSubscriptions] = useState<any[]>([]);
   const [updatingIds, setUpdatingIds] = useState<string[]>([]);
-  const [expandedId, setExpandedId] = useState<string | null>(null); // Track accordion state
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const isFetchingRef = React.useRef(false);
+  const lastFetchRef = React.useRef(0);
 
   // State for Purchase Modal
   const [selectedPlan, setSelectedPlan] = useState<any | null>(null);
   const [isModalVisible, setModalVisible] = useState(false);
 
+  // --- BLUR ANIMATION ---
+  const blurIntensity = useSharedValue(0);
+  useEffect(() => {
+    blurIntensity.value = withTiming(isRewardsModalVisible ? (Platform.OS === 'ios' ? 100 : 85) : 0, {
+      duration: 400,
+    });
+  }, [isRewardsModalVisible]);
+
+  const animatedBlurStyle = useAnimatedStyle(() => ({
+    opacity: blurIntensity.value > 0 ? 1 : 0,
+  }));
+
   // State for QR Code Modal
   const [qrModalVisible, setQrModalVisible] = useState(false);
   const [selectedForQr, setSelectedForQr] = useState<any | null>(null);
 
-  // --- DATA FETCHING & ACTIONS ---
-  const fetchData = useCallback(async () => {
-
+  const fetchData = React.useCallback(async () => {
     const userId = user?.id || user?._id;
     const token = await storage.getAccessToken();
 
-    if (!(userId) || !(token)) {
-      console.log("[DASHBOARD] Skipping fetch: No session or token.");
-      setSubscriptions([]);
+    if (!isAuthenticated || !userId || !token) {
+      if (isAuthenticated) console.log("[DASHBOARD] Fetch abort: No session.");
+      if (!isAuthenticated) {
+        setSubscriptions([]);
+        setEarnedCoins(0);
+      }
       setLoading(false);
+      setRefreshing(false);
       return;
     }
+
+    // Prevent redundant calls within 2 seconds
+    const now = Date.now();
+    if (isFetchingRef.current || (now - lastFetchRef.current < 2000)) return;
+
     try {
+      isFetchingRef.current = true;
+      lastFetchRef.current = now;
       setLoading(true);
-      const subsResponse = await handleGetUserSubscriptions(userId);
-      console.log("[DASHBOARD] Subscriptions received:", subsResponse);
+
+      const [subsResponse] = await Promise.all([
+        handleGetUserSubscriptions(userId),
+        fetchRewards(userId)
+      ]);
+
       const rawSubs = Array.isArray(subsResponse) ? subsResponse : subsResponse?.data || [];
       const activeSubs = rawSubs
         .filter((s: any) => s && s.esimTranNo && !['CANCEL', 'SUSPEND', 'DELETED'].includes(s.esimStatus))
@@ -138,24 +181,24 @@ export default function DashboardScreen() {
         setSubscriptions([]);
       }
     } catch (error: any) {
-      // ✅ SPECIFIC DEBUGGING FOR 404
       if (error.response?.status === 404) {
-        console.warn("[DASHBOARD] 404 Received: This user likely has no active plans yet.");
-        setSubscriptions([]); // Gracefully handle as "No Plans"
+        setSubscriptions([]);
+      } else if (error.message?.includes('No token')) {
+        console.log("[DASHBOARD] Auth lost.");
       } else {
-        console.error("[DASHBOARD] Fetch Chain Failed:", error.message);
+        console.error("[DASHBOARD] Fetch Failed:", error.message);
       }
     } finally {
+      isFetchingRef.current = false;
       setLoading(false);
       setRefreshing(false);
     }
-  }, [user]);
+  }, [user?.id, handleGetUserSubscriptions, handleUsageCheck, fetchRewards, isAuthenticated]);
 
-  // 2. Create the handler function for the button
   const handleCancelPlan = (esimTranNo: string, iccid: string) => {
     showAlert({
       title: "Cancel Plan",
-      message: "Are you sure you want to permanently cancel this eSIM? This action cannot be undone.",
+      message: "Are you sure you want to permanently cancel this eSIM?",
       buttons: [
         { text: "Dismiss", style: "cancel" },
         {
@@ -163,13 +206,9 @@ export default function DashboardScreen() {
           style: "destructive",
           onPress: async () => {
             try {
-              setLoading(true); // Show a loading state
+              setLoading(true);
               await handleCancelEsimProfile(esimTranNo, iccid);
-              // Refresh the data to show the card has been removed
               await fetchData();
-            } catch (error) {
-              console.error("Failed to cancel plan:", error);
-              showAlert({ title: "Error", message: "Could not cancel the plan. Please try again." });
             } finally {
               setLoading(false);
             }
@@ -178,19 +217,16 @@ export default function DashboardScreen() {
       ]
     });
   };
+
   const copyAddress = async () => {
     if (!walletAddress) return;
     await Clipboard.setStringAsync(walletAddress);
-    showAlert({
-      title: 'Copied',
-      message: 'Address copied to clipboard!\n\n⚠️ Only transfer SOL & USDC tokens to this address.'
-    });
+    showAlert({ title: 'Copied', message: 'Address copied!' });
   };
 
   const truncatedAddress = walletAddress
     ? `${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}`
     : 'Not Connected';
-
 
   const refreshPlanUsage = async (esimTranNo: string) => {
     if (updatingIds.includes(esimTranNo)) return;
@@ -219,32 +255,23 @@ export default function DashboardScreen() {
     setQrModalVisible(true);
   };
 
-  // This function will fetch the wallet's token balance
-  const fetchWalletData = useCallback(async () => {
+  const fetchWalletData = React.useCallback(async () => {
     if (!walletAddress) return;
     const data = await getWalletBalance(walletAddress);
     setWalletData(data);
   }, [walletAddress, getWalletBalance]);
 
-
-
   useEffect(() => {
-    // This effect runs when the component mounts and if the user logs in/out.
-    if (user?.id) {
+    if (isAuthenticated) {
       fetchData();
+      if (walletAddress) fetchWalletData();
     }
-    if (walletAddress) {
-      fetchWalletData();
-    }
-  }, [user?.id, walletAddress]); // <-- DEPENDS ON DATA, NOT FUNCTIONS
-
+  }, [isAuthenticated, walletAddress]); // Removed unstable dependencies
 
   const onRefresh = () => {
     setRefreshing(true);
-    // Also refresh wallet data
     Promise.all([fetchData(), fetchWalletData()]).finally(() => setRefreshing(false));
   };
-
 
   const formatBytes = (bytes: any) => {
     const b = parseInt(bytes || 0);
@@ -450,16 +477,16 @@ export default function DashboardScreen() {
         activities={rewardActivities}
       />
 
-      {/* ... Your other modals (PurchaseModal, ActivationModal) ... */}
-
-      {/* 2. ✅ The Blur Overlay, rendered conditionally */}
+      {/* Parental Blur for RewardsModal (Fixes Android Blur) */}
       {isRewardsModalVisible && (
-        <BlurView
-          intensity={25}
+        <AnimatedBlurView
+          intensity={Platform.OS === 'ios' ? 100 : 85}
           tint="dark"
-          style={StyleSheet.absoluteFill} // This makes it cover the whole screen
+          style={[StyleSheet.absoluteFill, animatedBlurStyle, { zIndex: 99 }]}
         />
       )}
+
+      {/* ... Your other modals (PurchaseModal, ActivationModal) ... */}
 
       <ActivationModal
         visible={qrModalVisible}
