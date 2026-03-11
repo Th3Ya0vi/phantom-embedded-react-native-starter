@@ -2,8 +2,6 @@
 
 A minimal Expo starter template for integrating Phantom's embedded user wallets on Solana for mobile apps.
 
-![Phantom Embedded Wallet](https://phantom.app/img/logo.svg)
-
 ## Features
 
 - Phantom Connect authentication with secure OAuth flow
