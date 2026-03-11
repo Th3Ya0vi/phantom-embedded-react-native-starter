@@ -28,7 +28,7 @@ Before you begin, ensure you have:
 - **pnpm** package manager (`npm install -g pnpm`)
 - **Expo CLI** (`npm install -g expo-cli`)
 - **iOS Simulator** (macOS) or **Android Emulator** set up
-- **Phantom App ID** from [Phantom Portal](https://phantom.app/developer)
+- **Phantom App ID** from [Phantom Portal](https://phantom.com/portal)
 
 ## Quick Start
 
@@ -56,7 +56,7 @@ EXPO_PUBLIC_SOLANA_RPC_URL=https://api.mainnet-beta.solana.com
 
 ### 3. Get Your Phantom App ID
 
-1. Visit [Phantom Portal](https://phantom.app/developer)
+1. Visit [Phantom Portal](https://phantom.com/portal)
 2. Sign in with your Phantom wallet
 3. Create a new app or use an existing one
 4. Copy your **App ID** (not Organization ID)

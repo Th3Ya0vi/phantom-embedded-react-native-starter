@@ -10,14 +10,21 @@ import {
   Linking,
   Image,
 } from 'react-native';
-import { 
-  useAccounts, 
-  useDisconnect, 
-  useSolana, 
+import {
+  useAccounts,
+  useDisconnect,
+  useSolana,
   useEthereum,
   useModal,
   AddressType,
 } from '@phantom/react-native-sdk';
+import {
+  Transaction,
+  SystemProgram,
+  PublicKey,
+  LAMPORTS_PER_SOL,
+  Connection,
+} from '@solana/web3.js';
 import { useRouter } from 'expo-router';
 import { getBalance } from '@/lib/solana';
 import { truncateAddress, copyToClipboard } from '@/lib/utils';
@@ -87,6 +94,34 @@ export function WalletInfo() {
     } catch (error: any) {
       if (!error?.message?.includes('cancelled')) {
         Alert.alert('Error', error?.message || 'Signing failed');
+      }
+    } finally {
+      setIsSigning(false);
+    }
+  };
+
+  const handleSendSOL = async () => {
+    if (!isSolanaAvailable || !solana || !solanaAccount?.address) return;
+    setIsSigning(true);
+    try {
+      const connection = new Connection('https://api.mainnet-beta.solana.com');
+      const { blockhash } = await connection.getLatestBlockhash();
+      const fromAddress = await solana.getPublicKey();
+      const transaction = new Transaction({
+        recentBlockhash: blockhash,
+        feePayer: new PublicKey(fromAddress),
+      }).add(
+        SystemProgram.transfer({
+          fromPubkey: new PublicKey(fromAddress),
+          toPubkey: new PublicKey(fromAddress), // sends to self as demo
+          lamports: 0.001 * LAMPORTS_PER_SOL,
+        })
+      );
+      const result = await solana.signAndSendTransaction(transaction);
+      Alert.alert('Sent! ✓', `Tx: ${result.hash.slice(0, 16)}...`);
+    } catch (error: any) {
+      if (!error?.message?.includes('cancelled')) {
+        Alert.alert('Error', error?.message || 'Transaction failed');
       }
     } finally {
       setIsSigning(false);
@@ -193,6 +228,18 @@ export function WalletInfo() {
               <ActivityIndicator color="#fff" size="small" />
             ) : (
               <Text style={styles.signButtonText}>Sign Message</Text>
+            )}
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.signButton, { marginTop: 8 }]}
+            onPress={handleSendSOL}
+            disabled={isSigning || !isSolanaAvailable}
+          >
+            {isSigning ? (
+              <ActivityIndicator color="#fff" size="small" />
+            ) : (
+              <Text style={styles.signButtonText}>Send SOL (Demo)</Text>
             )}
           </TouchableOpacity>
         </View>
