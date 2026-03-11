@@ -8,7 +8,6 @@ import {
   Alert,
   ScrollView,
   Linking,
-  Image,
 } from 'react-native';
 import {
   useAccounts,
@@ -30,8 +29,6 @@ import { getBalance } from '@/lib/solana';
 import { truncateAddress, copyToClipboard } from '@/lib/utils';
 import { colors } from '@/lib/theme';
 
-// Import Phantom logo
-const PhantomLogo = require('@/assets/default.png');
 
 /**
  * WalletInfo component - Dashboard for connected multi-chain wallet
@@ -171,8 +168,7 @@ export function WalletInfo() {
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
       {/* Header */}
       <View style={styles.header}>
-        <Image source={PhantomLogo} style={styles.logo} resizeMode="contain" />
-        <Text style={styles.welcomeText}>Welcome back</Text>
+<Text style={styles.welcomeText}>Welcome back</Text>
         {walletId && (
           <Text style={styles.walletId}>{walletId.slice(0, 8)}...{walletId.slice(-4)}</Text>
         )}
@@ -320,11 +316,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 24,
     paddingHorizontal: 20,
-  },
-  logo: {
-    width: 48,
-    height: 48,
-    marginBottom: 12,
   },
   welcomeText: {
     fontSize: 20,
