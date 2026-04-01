@@ -15,8 +15,8 @@ import { colors } from '@/lib/theme';
 /**
  * Root layout component that wraps the entire app
  * Configures PhantomProvider for embedded user wallets
- * Supports both Solana and Ethereum chains (multi-chain)
- * Updated for SDK v1.0.0-beta.26 with modal support
+ * Supports Solana chain
+ * Updated for SDK v1.0.7
  */
 export default function RootLayout() {
   const appId = process.env.EXPO_PUBLIC_PHANTOM_APP_ID || '';
@@ -28,8 +28,8 @@ export default function RootLayout() {
     scheme,
     // Supported authentication providers
     providers: ['google', 'apple'],
-    // Multi-chain support: Solana and Ethereum
-    addressTypes: [AddressType.solana, AddressType.ethereum],
+    // Solana chain support
+    addressTypes: [AddressType.solana],
     authOptions: {
       redirectUrl: `${scheme}://phantom-auth-callback`,
     },
@@ -43,8 +43,8 @@ export default function RootLayout() {
   // Custom theme matching brand colors while extending dark theme
   const customTheme = {
     ...darkTheme,
-    brand: colors.brand, // Use brand indigo color
-    borderRadius: 12,
+    brand: colors.brand as `#${string}`, // Use brand indigo color
+    borderRadius: '12px',
   };
   
   return (
