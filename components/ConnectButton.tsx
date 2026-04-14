@@ -14,7 +14,7 @@ const PhantomGhost = require('@/assets/light.png');
 
 /**
  * ConnectButton component handles Phantom wallet authentication
- * Uses the new SDK modal (v1.0.0-beta.26) for wallet connection
+ * Uses SDK v1.0.0 modal for wallet connection
  * Modal supports Google and Apple authentication
  */
 export function ConnectButton() {

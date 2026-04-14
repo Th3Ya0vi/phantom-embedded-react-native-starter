@@ -31,15 +31,14 @@ import { colors } from '@/lib/theme';
 
 
 /**
- * WalletInfo component - Dashboard for connected multi-chain wallet
- * Displays Solana & Ethereum wallet addresses, balances, and signing capabilities
- * Updated for SDK v1.0.0-beta.26 with modal integration
+ * WalletInfo component - Dashboard for connected Solana wallet
+ * Displays Solana wallet address, balance, and signing capabilities
+ * Updated for SDK v1.0.0
  */
 export function WalletInfo() {
   const { addresses, isConnected, walletId } = useAccounts();
   const { disconnect, isDisconnecting } = useDisconnect();
   const { solana, isAvailable: isSolanaAvailable } = useSolana();
-  const { ethereum, isAvailable: isEthereumAvailable } = useEthereum();
   const modal = useModal();
   const router = useRouter();
   
@@ -48,7 +47,6 @@ export function WalletInfo() {
   const [isSigning, setIsSigning] = useState(false);
 
   const solanaAccount = addresses?.find(addr => addr.addressType === AddressType.solana);
-  const ethereumAccount = addresses?.find(addr => addr.addressType === AddressType.ethereum);
 
   // Redirect to home if disconnected
   useEffect(() => {
@@ -155,7 +153,7 @@ export function WalletInfo() {
   };
 
   // Loading state while fetching wallet info
-  if (!solanaAccount && !ethereumAccount) {
+  if (!solanaAccount) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color={colors.brand} />
@@ -241,39 +239,6 @@ export function WalletInfo() {
         </View>
       )}
 
-      {/* Ethereum Card */}
-      {ethereumAccount && (
-        <View style={[styles.chainCard, styles.ethCard]}>
-          <View style={styles.chainHeader}>
-            <View style={[styles.chainBadge, styles.ethBadge]}>
-              <Text style={styles.chainIcon}>Ξ</Text>
-            </View>
-            <Text style={styles.chainName}>Ethereum</Text>
-            {isEthereumAvailable && <View style={[styles.statusDot, styles.ethDot]} />}
-          </View>
-          
-          <TouchableOpacity 
-            style={styles.addressRow}
-            onPress={() => handleCopy(ethereumAccount.address, 'Ethereum')}
-          >
-            <Text style={styles.addressLabel}>Address</Text>
-            <Text style={styles.addressValue}>{truncateAddress(ethereumAccount.address, 6)}</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.signButton, styles.ethSignButton]}
-            onPress={handleSignEthereumMessage}
-            disabled={isSigning || !isEthereumAvailable}
-          >
-            {isSigning ? (
-              <ActivityIndicator color="#fff" size="small" />
-            ) : (
-              <Text style={styles.signButtonText}>Sign Message</Text>
-            )}
-          </TouchableOpacity>
-        </View>
-      )}
-
       {/* Actions */}
       <View style={styles.actions}>
         <TouchableOpacity
@@ -350,9 +315,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.gray200,
   },
-  ethCard: {
-    borderColor: colors.blue + '30',
-  },
   chainHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -365,9 +327,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.lavender + '20',
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  ethBadge: {
-    backgroundColor: colors.blue + '20',
   },
   chainIcon: {
     fontSize: 16,
@@ -385,9 +344,6 @@ const styles = StyleSheet.create({
     height: 8,
     borderRadius: 4,
     backgroundColor: colors.green,
-  },
-  ethDot: {
-    backgroundColor: colors.blue,
   },
   addressRow: {
     flexDirection: 'row',
@@ -436,9 +392,6 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderRadius: 10,
     alignItems: 'center',
-  },
-  ethSignButton: {
-    backgroundColor: colors.blue,
   },
   signButtonText: {
     color: '#fff',

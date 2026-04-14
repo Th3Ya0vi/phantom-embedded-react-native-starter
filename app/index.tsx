@@ -11,7 +11,7 @@ const PhantomLogo = require('@/assets/default.png');
 /**
  * Home screen - displays welcome message and connect button
  * This is the entry point of the app where users initiate Phantom Connect
- * Updated for SDK v1.0.0-beta.26 with modal support
+ * Updated for SDK v1.0.0
  */
 export default function HomeScreen() {
   const { isConnected } = useAccounts();

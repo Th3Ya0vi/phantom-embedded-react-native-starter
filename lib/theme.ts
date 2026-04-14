@@ -1,7 +1,7 @@
 /**
  * Brand Theme Colors
  * Single source of truth for all color tokens
- * Updated for Phantom SDK v1.0.0-beta.26 with modal support
+ * Updated for Phantom SDK v1.0.0
  */
 export const colors = {
   // Primary brand colors
